@@ -19,6 +19,13 @@ the Git commit's summary line) and a **Commit extended description**
 
 ---
 
+## v2.7
+
+**Commit short description:** `v2.7: Build with AI, sidebar and UI polish`
+
+**Commit extended description:**
+v2.7 adds Build with AI. A button on the work order, work request, asset, bill of materials, location, vendor and part screens, on Work Orders (PM program) and on the PM starter catalogue opens a text box where you describe what you want and paste links. Gemini (the same GEMINI_API_KEY as link look-ups) returns a draft you review: a filled-in form, a suggested BOM, a location structure, several PM Bases as a PM program, or new PM templates. Nothing is saved until you apply it. The Owner can switch it off under Features. Other changes: the collapse-menu arrow now sits inside the left bar; Managers see the Dashboard metrics as well as Owners; page titles, menu labels and pop-up titles use proper title case; confirmation pop-ups use the primary button colour (red only for deletions and removals) and the credentials email prompt says Send. Tested in a browser harness only, not in a live deployment; the Gemini call itself could not be tried without a key.
+
 ## v2.6.1
 
 **Commit short description:** `v2.6.1: Digest timing, app updates, change log`

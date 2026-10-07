@@ -311,4 +311,4 @@ async function prefill(rawUrl, kind, opts) {
   return { fields, usedAi, aiNote, finalUrl };
 }
 
-module.exports = { prefill, geminiAvailable, isBlockedAddress, parseTarget, extractPlain, cleanPrice };
+module.exports = { fetchPage, visibleText, prefill, geminiAvailable, isBlockedAddress, parseTarget, extractPlain, cleanPrice };

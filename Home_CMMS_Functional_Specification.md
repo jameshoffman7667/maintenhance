@@ -369,6 +369,18 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - All digest options default to off for new accounts.
 - The left bar shows the installed version under the app name. Selecting it opens the change log (read from CHANGELOG.md in the image), newest version first.
 
+### 3.29 Build with AI (v2.7)
+- A Build with AI button appears on the entry screens: work order (new), work request (new), asset (add), bill of materials, location tree, vendor, part, Work Orders (Build PM Program with AI, Owners and Managers) and the PM Wizard starter catalogue (Build Templates with AI). It opens a text box for a description and links; up to three pasted links are fetched and sent with the request.
+- The server (POST /api/ai/build) asks Gemini (GEMINI_API_KEY, GEMINI_MODEL) for a JSON draft and returns it; it never saves anything. Guests cannot use it; requests are rate limited per person.
+- The browser shows the draft for review. Single items fill in the open form (only valid location, asset and enum values are accepted). Lists (BOM, locations, PM Bases, templates) show tick boxes and add only what is ticked. A new asset's AI bill of materials is added when the asset is saved.
+- Owners switch it on or off under Features (it is on by default and needs a Gemini key on the server). The text typed, links and the names of locations and assets are sent to Google's Gemini service.
+
+### 3.30 Interface changes (v2.7)
+- The collapse-menu arrow sits inside the left bar; when collapsed, a menu button in the top bar reopens it.
+- Dashboard metrics are visible to Owners and Managers.
+- Page titles, menu labels and pop-up titles use title case.
+- Confirmation pop-ups use the primary button colour; red is kept for destructive confirmations. The email-credentials prompt uses Send.
+
 ## 4. Non-Functional Requirements
 
 | Category | Requirement |

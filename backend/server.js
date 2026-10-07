@@ -302,6 +302,28 @@ app.post("/api/prefill", requireAuth, async (req, res) => {
 });
 
 /* -------------------------------------------------------------
+   Build with AI (v2.7): returns a draft for the browser to review. Never saves.
+------------------------------------------------------------- */
+const aiBuildLimiter = makeLimiter({ max: 20, windowMs: 10 * 60 * 1000 });
+app.post("/api/ai/build", requireAuth, async (req, res) => {
+  const cfg = settings.current();
+  if (cfg.features.aiBuilder === false) return res.status(404).json({ error: "Build with AI is turned off" });
+  if (req.user.role === "Guest") return res.status(403).json({ error: "Guests can't use Build with AI" });
+  const key = String(req.user.id);
+  const wait = aiBuildLimiter.check(key);
+  if (wait) return res.status(429).json({ error: `Too many AI requests. Try again in ${Math.ceil(wait / 60)} minute(s).` });
+  aiBuildLimiter.fail(key);
+  const { kind, prompt, context } = req.body || {};
+  try {
+    res.json(await require("./aibuild").build(kind, prompt, context));
+  } catch (e) {
+    if (e && e.userFacing) return res.status(400).json({ error: e.message });
+    console.error("ai build failed:", e && e.message);
+    res.status(502).json({ error: "The AI request didn't work. Try again in a moment." });
+  }
+});
+
+/* -------------------------------------------------------------
    Household member management. Listing is open to any
    authenticated user (work orders need to offer an Executor
    picker built from this list); creating/removing accounts stays

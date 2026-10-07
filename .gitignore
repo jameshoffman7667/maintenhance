@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+
+# SQLite database & local data (only relevant if not using Docker volumes)
+backend/data/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Secrets — never commit your real values
+.env
+
+# OS / editor cruft
+.DS_Store
+*.log
+npm-debug.log*
+.vscode/
+.idea/

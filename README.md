@@ -3,6 +3,8 @@
 > **MaintEnhance** (short form "ME") is the product name used throughout.
 > (Versions before v1.8 were called HomeKeep; see CHANGELOG.md.)
 
+> **Build with AI (v2.7):** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) to use Build with AI and AI link look-ups; the Owner turns Build with AI on or off under Features.
+
 A standalone, single-container build of the MaintEnhance household CMMS: a
 Node/Express + SQLite backend with real multi-user accounts, serving a
 React frontend that's installable as a PWA on Android (or desktop).

@@ -233,7 +233,7 @@ const DEFAULT_SETTINGS = {
     colors: { primary: "#28415F", primaryDark: "#7FA3CC", accent: "#C85410", accentDark: "#E38C4E" },
   },
   terms: { orgNoun: "Organization", locationLevels: ["Property", "Structure", "Floor", "Room", "Area", "Sub-area"], siteLevelIndex: 0 },
-  features: { homeAssistantAlarms: true, linkPrefill: true, linkPrefillAi: false, executionScheduling: false, workforceScheduling: false, hourlyAssignment: false },
+  features: { homeAssistantAlarms: true, linkPrefill: true, linkPrefillAi: false, aiBuilder: true, executionScheduling: false, workforceScheduling: false, hourlyAssignment: false },
 };
 let SETTINGS = DEFAULT_SETTINGS;
 function applySettings(cfg) {
@@ -720,6 +720,29 @@ function freshChecklist(base) {
     done: false, value: "", passFail: "", note: "",
   }));
 }
+// v2.7: PM Bases created from an AI-drafted PM program (same shape the PM setup wizard makes).
+function aiCreatePmBases(d, items) {
+  items.forEach((it) => {
+    d.counters.wo += 1;
+    const asset = it.assetId ? d.assets.find((x) => x.id === it.assetId) : null;
+    const locationId = it.locationId || (asset && asset.locationId) || (d.locations[0] && d.locations[0].id) || "";
+    const base = {
+      id: uid("wo"), number: d.counters.wo, title: it.title, type: "PM Base", status: "Active",
+      assetId: it.assetId || null, bomNodeId: null, locationId,
+      description: it.description || "", sourceRequestId: null, sourceBenchmarkId: null,
+      sourcePmBaseId: null, sourceFixedDate: null, priority: "Medium", executorId: "", executorIds: [],
+      estHours: execOn() && it.estHours ? String(it.estHours) : "", crewRequired: execOn() && it.crewRequired ? String(Math.max(1, Math.round(it.crewRequired))) : "",
+      scheduledDate: "", requiredByDate: "", completedDate: null, verifiedDate: null,
+      cost: "", vendorId: null, notes: "", parts: [], comments: [], partsDeducted: false, createdBy: null,
+      pmMode: "Non-fixed", triggerType: "calendar",
+      frequencyValue: it.frequencyValue, frequencyUnit: it.frequencyUnit,
+      checklistTemplate: [],
+    };
+    d.workOrders.push(base);
+    spawnPmInstance(d, base, { afterDateISO: todayISO(), fixedDate: null });
+  });
+}
+
 function spawnPmInstance(d, base, opts) {
   if (pmBaseHasActiveChild(d, base.id)) return;
   if (pmBaseOnStandby(base)) return;
@@ -915,7 +938,7 @@ function Modal({ title, onClose, children, wide, info }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.line}`, position: "sticky", top: 0, background: C.panel }}>
-          <h3 style={{ fontFamily: FONT_HEAD, fontSize: 16, fontWeight: 600, color: C.ink, margin: 0 }}>{title}{info && <InfoTip k={info} />}</h3>
+          <h3 style={{ fontFamily: FONT_HEAD, fontSize: 16, fontWeight: 600, color: C.ink, margin: 0 }}>{titleCase(title)}{info && <InfoTip k={info} />}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkSoft }}>
             <X size={18} />
           </button>
@@ -934,6 +957,9 @@ function useDialog() {
   return useContext(DialogContext);
 }
 
+// v2.7: confirm pop-ups use the primary button colour; red is kept for destructive ones.
+const DESTRUCTIVE_RE = /\b(delete[sd]?|remove|undone|lost|stop working|discard|replace|regenerate|shrink)\b/i;
+const confirmIsDestructive = (d) => (d.opts && typeof d.opts.danger === "boolean") ? d.opts.danger : DESTRUCTIVE_RE.test(d.message || "");
 function DialogHost({ dialog, onResult }) {
   const [text, setText] = useState(dialog.defaultValue || "");
   if (dialog.type === "alert") {
@@ -952,7 +978,7 @@ function DialogHost({ dialog, onResult }) {
         <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: C.ink, marginBottom: 16 }}>{dialog.message}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Btn variant="ghost" onClick={() => onResult(false)}>Cancel</Btn>
-          <Btn variant="danger" onClick={() => onResult(true)}>Confirm</Btn>
+          <Btn variant={confirmIsDestructive(dialog) ? "danger" : "primary"} onClick={() => onResult(true)}>{(dialog.opts && dialog.opts.okLabel) || (confirmIsDestructive(dialog) ? "Confirm" : "Continue")}</Btn>
         </div>
       </Modal>
     );
@@ -1006,7 +1032,7 @@ function DialogProvider({ children }) {
   };
 
   const dialogApi = {
-    confirm: (message) => open("confirm", message),
+    confirm: (message, opts) => open("confirm", message, undefined, opts),
     alertMsg: (message) => open("alert", message),
     promptMsg: (message, def, opts) => open("prompt", message, def, opts),
     saveExit: (message) => open("saveExit", message),
@@ -1053,13 +1079,31 @@ function InfoBlock({ label, text, items }) {
   );
 }
 
+// v2.7: title case for page titles, menu labels and pop-up titles. Small words stay lower case
+// (unless first); words that already carry capitals (BOM, PM, WO-0007) are left alone.
+const TC_SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "vs", "with", "from"]);
+function titleCase(s) {
+  if (typeof s !== "string") return s;
+  let first = true;
+  return s.replace(/[^\s]+/g, (w) => {
+    const m = /^([^A-Za-z]*)([A-Za-z][\s\S]*)$/.exec(w);
+    const wasFirst = first; first = /[—:–]$/.test(w);
+    if (w === "—" || w === "–") { first = true; return w; }
+    if (!m) return w;
+    const [, pre, core] = m;
+    const bare = core.replace(/[^A-Za-z]/g, "").toLowerCase();
+    if (!wasFirst && TC_SMALL.has(bare) && core === core.toLowerCase()) return w;
+    if (/[A-Z]/.test(core.slice(1))) return w; // BOM, WO, mixed case
+    return pre + core.charAt(0).toUpperCase() + core.slice(1);
+  });
+}
 function SectionHeader({ title, subtitle, action, info }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <h2 style={{ fontFamily: FONT_HEAD, fontSize: 22, fontWeight: 700, color: C.ink, margin: 0 }}>{title}</h2>
+          <h2 style={{ fontFamily: FONT_HEAD, fontSize: 22, fontWeight: 700, color: C.ink, margin: 0 }}>{titleCase(title)}</h2>
           {info && (
             <button onClick={() => setShowInfo(true)} title={`About ${title}`} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, display: "flex", padding: 2 }}>
               <Info size={16} />
@@ -1081,6 +1125,118 @@ function SectionHeader({ title, subtitle, action, info }) {
   );
 }
 
+
+/* ---- Build with AI (v2.7) ----
+   Describe what you want (and paste links); the server asks Gemini for a draft which is
+   shown here for review. Nothing is saved until the person presses the apply button. */
+const aiOk = () => SETTINGS.features.aiBuilder !== false && !!SETTINGS.geminiKeyDetected && ME && ME.role !== "Guest";
+const aiStr = (v, n = 400) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, n) : "");
+const aiNum = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+const aiPick = (v, list, fb = "") => (list.includes(v) ? v : fb);
+const aiDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+function aiLocCtx(data) { return "LOCATIONS (id | path):\n" + data.locations.slice(0, 250).map((l) => `${l.id} | ${locationPath(data.locations, l.id)}`).join("\n"); }
+function aiAssetCtx(data) { return "ASSETS (id | name | category | locationId):\n" + data.assets.filter((a) => !a.archived).slice(0, 250).map((a) => `${a.id} | ${a.name} | ${a.category || ""} | ${a.locationId || ""}`).join("\n"); }
+function aiIdOrBlank(list, id) { return list.some((x) => x.id === id) ? id : ""; }
+
+function AiBuildButton({ kind, label, small, ...props }) {
+  const [open, setOpen] = useState(false);
+  if (!aiOk()) return null;
+  return (
+    <>
+      <Btn small={small !== false} variant="ghost" onClick={() => setOpen(true)} title="Describe it and let AI draft it for you to review"><Wand2 size={13} /> {label || "Build with AI"}</Btn>
+      {open && <AiBuildModal kind={kind} onClose={() => setOpen(false)} {...props} />}
+    </>
+  );
+}
+
+// props: kind, title, hint, context, extra, review(draft)->{fields:[[label,value]]}|{items:[{key,label,detail,depth}],noun}, apply(draft, keys), applyLabel
+function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyLabel, onClose }) {
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [picked, setPicked] = useState(() => new Set());
+  const run = async () => {
+    setBusy(true); setError("");
+    try {
+      const r = await api.aiBuild(kind, prompt, typeof context === "function" ? context() : context);
+      const rv = review(r.draft);
+      if ((!rv.fields || !rv.fields.length) && (!rv.items || !rv.items.length)) { setError("The AI didn't come back with anything usable. Try describing it in more detail."); return; }
+      setDraft({ raw: r.draft, rv });
+      setPicked(new Set((rv.items || []).map((i) => i.key)));
+    } catch (e) { setError(e.message || "Couldn't build a draft"); }
+    finally { setBusy(false); }
+  };
+  const toggle = (k) => setPicked((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const doApply = () => { apply(draft.raw, picked); onClose(); };
+  const small = { fontFamily: FONT_BODY, fontSize: 12, color: C.inkFaint };
+  return (
+    <Modal title={title || "Build with AI"} info="aiBuild" onClose={onClose} wide>
+      {!draft && (
+        <>
+          <div style={{ ...small, marginBottom: 8 }}>Describe what you want in your own words. You can paste web links (a product page, a manual, a supplier). The AI makes a draft that you review before anything is saved.</div>
+          {extra}
+          <textarea data-ai-prompt autoFocus style={{ ...inputStyle, minHeight: 130 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={hint || "Describe it here…"} />
+          {error && <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.rust, marginTop: 8 }}>{error}</div>}
+          <div style={{ ...small, marginTop: 8 }}>Your text, any links and the names of your locations and assets are sent to Google's Gemini service. Please check the draft; AI can be wrong.</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+            <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn variant="primary" onClick={run} disabled={busy || !prompt.trim()}>{busy ? <><Loader2 size={14} className="animate-spin" /> Building…</> : <><Wand2 size={14} /> Build draft</>}</Btn>
+          </div>
+        </>
+      )}
+      {draft && (
+        <>
+          <div style={{ ...small, marginBottom: 8 }}>{draft.rv.fields && draft.rv.items ? `Review the details. Tick the bill of materials entries to keep (${picked.size} of ${draft.rv.items.length}). Applying fills in the form; nothing is saved until you save it.` : draft.rv.items ? `Tick what you want to add (${picked.size} of ${draft.rv.items.length}). You can edit everything afterwards.` : "Review the draft. Applying it fills in the form; nothing is saved until you save the form."}</div>
+          <div data-ai-draft style={{ maxHeight: "50vh", overflowY: "auto", border: `1px solid ${C.line}`, borderRadius: 4, padding: 10, background: C.panelAlt }}>
+            {draft.rv.fields && draft.rv.fields.map(([k, v]) => (
+              <div key={k} style={{ display: "flex", gap: 10, padding: "3px 0", fontFamily: FONT_BODY, fontSize: 12.5 }}>
+                <div style={{ width: 130, flexShrink: 0, color: C.inkFaint }}>{k}</div><div style={{ color: C.ink, whiteSpace: "pre-wrap", minWidth: 0 }}>{String(v)}</div>
+              </div>
+            ))}
+            {draft.rv.items && draft.rv.items.map((i) => (
+              <label key={i.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", paddingLeft: (i.depth || 0) * 18, cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink }}>
+                <input type="checkbox" checked={picked.has(i.key)} onChange={() => toggle(i.key)} style={{ marginTop: 2 }} />
+                <span><b>{i.label}</b>{i.detail && <span style={{ color: C.inkFaint }}> — {i.detail}</span>}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+            <Btn variant="ghost" onClick={() => setDraft(null)}>Back</Btn>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+              <Btn variant="primary" onClick={doApply} disabled={!draft.rv.fields && draft.rv.items && picked.size === 0}>{applyLabel || (draft.rv.items && !draft.rv.fields ? `Add ${picked.size}` : "Apply to the form")}</Btn>
+            </div>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+// Reviewers/normalisers shared by the entry screens.
+function aiNodes(draft, maxN = 80) {
+  const raw = Array.isArray(draft && draft.nodes) ? draft.nodes.slice(0, maxN) : [];
+  return raw.map((n, i) => ({ i, name: aiStr(n && n.name, 120), level: n && n.level, parent: Number.isInteger(n && n.parent) && n.parent >= 0 && n.parent < i ? n.parent : null, manufacturer: aiStr(n && n.manufacturer, 80), model: aiStr(n && n.model, 80), notes: aiStr(n && n.notes, 300) })).filter((n) => n.name);
+}
+function aiNodeDepth(nodes, n) { let d = 0, p = n.parent; const seen = new Set(); while (p != null && !seen.has(p)) { seen.add(p); d++; const q = nodes.find((x) => x.i === p); p = q ? q.parent : null; } return d; }
+const aiReviewNodes = (draft) => { const ns = aiNodes(draft); return { noun: "item", items: ns.map((n) => ({ key: n.i, label: n.name, detail: [n.level, n.manufacturer, n.model].filter(Boolean).join(" · "), depth: aiNodeDepth(ns, n) })) }; };
+// Turns chosen AI nodes into BOM nodes for an asset (a node whose parent was un-ticked moves up to its nearest ticked ancestor).
+function aiMakeBom(draft, picked, assetId) {
+  const ns = aiNodes(draft); const out = []; const idOf = {};
+  ns.filter((n) => picked.has(n.i)).forEach((n) => {
+    let p = n.parent; while (p != null && !picked.has(p)) { const q = ns.find((x) => x.i === p); p = q ? q.parent : null; }
+    idOf[n.i] = uid("bom");
+    const depth = p == null ? 0 : 1;
+    out.push({ id: idOf[n.i], assetId, parentId: p == null ? null : idOf[p], name: n.name, level: BOM_LEVELS.includes(n.level) ? n.level : depth ? "Sub-component" : "Component", manufacturer: n.manufacturer, model: n.model, installDate: "", cost: "", notes: n.notes });
+  });
+  return out;
+}
+const aiFreq = (it) => { const v = aiNum(it && it.frequencyValue); return { frequencyValue: String(v && v > 0 ? Math.round(v) : 12), frequencyUnit: aiPick(it && it.frequencyUnit, FREQUENCY_UNITS, "months") }; };
+function aiPmItems(draft, data) {
+  const raw = Array.isArray(draft && draft.items) ? draft.items.slice(0, 40) : [];
+  return raw.map((it, i) => ({ key: i, title: aiStr(it && it.title, 160), description: aiStr(it && it.description, 600), ...aiFreq(it), assetId: aiIdOrBlank(data.assets, it && it.assetId) || null, locationId: aiIdOrBlank(data.locations, it && it.locationId), estHours: aiNum(it && it.estHours), crewRequired: aiNum(it && it.crewRequired) })).filter((x) => x.title);
+}
 
 /* ---- Link pre-fill (v2.3) ----
    Paste a product or company link and the form fields fill in from it (the
@@ -1491,7 +1647,7 @@ function ChangelogModal({ onClose }) {
     </Modal>
   );
 }
-function Sidebar({ tab, setTab, open, role, counts, onNavigate }) {
+function Sidebar({ tab, setTab, open, role, counts, onNavigate, onClose }) {
   const [showLog, setShowLog] = useState(false);
   const items = NAV.filter((n) => (!n.ownerOnly || role === "Owner") && (!n.adminOnly || isAdmin(role) || (n.id === "alarms" && canAck())) && (!n.notGuest || role !== "Guest") && (!n.featureKey || SETTINGS.features[n.featureKey])).map((n) => (n.id === "schedule" && execOn() ? { ...n, label: "Labour assignment" } : n));
   return (
@@ -1502,11 +1658,12 @@ function Sidebar({ tab, setTab, open, role, counts, onNavigate }) {
       <div style={{ padding: "20px 18px 14px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BrandMark size={26} />
-          <span style={{ fontFamily: FONT_HEAD, fontWeight: 700, fontSize: SETTINGS.brand.name.length > 14 ? 14.5 : 17, letterSpacing: "0.01em", lineHeight: 1.15, minWidth: 0 }}>{SETTINGS.brand.name}</span>
+          <span style={{ fontFamily: FONT_HEAD, fontWeight: 700, fontSize: SETTINGS.brand.name.length > 14 ? 14.5 : 17, letterSpacing: "0.01em", lineHeight: 1.15, minWidth: 0, flex: 1 }}>{SETTINGS.brand.name}</span>
+          {onClose && <button data-collapse-sidebar onClick={onClose} title="Collapse the menu" aria-label="Collapse the menu" className="hk-tap" style={{ background: "rgba(255,255,255,0.10)", border: "none", borderRadius: 3, cursor: "pointer", color: "#D3DBE2", display: "flex", padding: 4 }}><ChevronLeft size={16} /></button>}
         </div>
         <button data-version onClick={() => setShowLog(true)} title="See what changed in each version"
           style={{ background: "none", border: "none", padding: 0, margin: "4px 0 0 34px", cursor: "pointer", fontFamily: FONT_BODY, fontSize: 11, color: "#8FA0AF", textDecoration: "underline", textUnderlineOffset: 2 }}>
-          v{SETTINGS.version || "2.6.1"}
+          v{SETTINGS.version || "2.7"}
         </button>
         {showLog && <ChangelogModal onClose={() => setShowLog(false)} />}
       </div>
@@ -1525,7 +1682,7 @@ function Sidebar({ tab, setTab, open, role, counts, onNavigate }) {
               }}
             >
               <Icon size={16} color={active ? "#fff" : "#B7C3CF"} />
-              <span style={{ fontFamily: FONT_BODY, fontSize: 13.5, fontWeight: active ? 600 : 500, color: active ? "#fff" : "#D3DBE2", flex: 1 }}>{n.label}</span>
+              <span style={{ fontFamily: FONT_BODY, fontSize: 13.5, fontWeight: active ? 600 : 500, color: active ? "#fff" : "#D3DBE2", flex: 1 }}>{titleCase(n.label)}</span>
               {!!badge && <span style={{ background: C.orange, color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 10, padding: "1px 6px" }}>{badge}</span>}
             </div>
           );
@@ -1761,7 +1918,7 @@ function Dashboard({ data, setTab, role, applyFilter, goToOrder, goToRequest }) 
 
       <WeekLookahead data={data} goToOrder={goToOrder} />
 
-      {role === "Owner" && <OwnerMetrics data={data} />}
+      {(role === "Owner" || role === "Manager") && <OwnerMetrics data={data} />}
 
       {warrantySoon.length > 0 && (
         <Panel style={{ padding: 16, marginTop: 16 }}>
@@ -1946,6 +2103,7 @@ function LocationsView({ data, update, role }) {
 
   // v2.6: adding a location is inline — a new row appears one level below the one clicked.
   const [draft, setDraft] = useState(null); // { parentId, name }
+  const [aiParent, setAiParent] = useState(""); // v2.7: where AI-built locations go
   const draftDone = useRef(false);
   const openAdd = (parentId) => {
     draftDone.current = false;
@@ -2065,7 +2223,29 @@ function LocationsView({ data, update, role }) {
         title="Location Hierarchy"
         subtitle={term("The physical map of the household that everything else is organized around.")}
         info={PAGE_INFO.locations}
-        action={isAdmin(role) && <Btn variant="primary" onClick={() => openAdd(null)}><Plus size={15} /> Add top-level location</Btn>}
+        action={isAdmin(role) && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <AiBuildButton small={false} kind="location" title="Build Locations with AI" hint="e.g. A two-storey house with a basement, a detached garage and a back yard. Main floor: kitchen, living room, dining room, powder room. Upstairs: three bedrooms and two bathrooms."
+              extra={<Field label="Add them under"><select aria-label="Add the locations under" style={inputStyle} value={aiParent} onChange={(e) => setAiParent(e.target.value)}><option value="">The top level</option>{data.locations.map((l) => <option key={l.id} value={l.id}>{locationPath(data.locations, l.id)}</option>)}</select></Field>}
+              context={() => "EXISTING LOCATIONS:\n" + (data.locations.slice(0, 150).map((l) => locationPath(data.locations, l.id)).join("\n") || "none") + `\nLEVEL NAMES (top to bottom): ${LOCATION_LEVELS.map(levelLabel).join(", ")}`}
+              review={aiReviewNodes}
+              apply={(d, picked) => {
+                const ns = aiNodes(d, 60);
+                update((x) => {
+                  const idOf = {};
+                  ns.filter((n) => picked.has(n.i)).forEach((n) => {
+                    let p = n.parent; while (p != null && !picked.has(p)) { const q = ns.find((y) => y.i === p); p = q ? q.parent : null; }
+                    const parentId = p == null ? (aiParent || null) : idOf[p];
+                    idOf[n.i] = uid("loc");
+                    x.locations.push({ id: idOf[n.i], name: n.name, level: defaultLevelForParent(x.locations, parentId), parentId, createdBy: null });
+                  });
+                  return x;
+                });
+                if (aiParent) setExpanded((prev) => new Set(prev).add(aiParent));
+              }} />
+            <Btn variant="primary" onClick={() => openAdd(null)}><Plus size={15} /> Add top-level location</Btn>
+          </div>
+        )}
       />
       <div style={{ display: "flex", gap: 14, marginBottom: 8 }}>
         <span className="hk-link" onClick={() => setExpanded(new Set(allIds))} style={{ fontFamily: FONT_BODY, fontSize: 12, fontWeight: 700, color: C.navy, cursor: "pointer" }}>Expand all</span>
@@ -2175,6 +2355,10 @@ function BomTree({ data, update, assetId, role }) {
         <div style={{ fontFamily: FONT_HEAD, fontSize: 14, fontWeight: 600, color: C.ink }}>Bill of Materials<InfoTip k="bom" /></div>
         {canWrite(role) && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <AiBuildButton kind="bom" label="Suggest BOM with AI" title="Suggest a Bill of Materials with AI" hint="Anything that helps: what it is, brand and model, a link to the manual or parts diagram, how detailed you want the breakdown."
+              context={() => { const as = data.assets.find((x) => x.id === assetId) || {}; return `ASSET: ${as.name || ""} | category ${as.category || ""} | maker ${as.manufacturer || ""} | model ${as.model || ""} | notes ${as.notes || ""}\nEXISTING BOM ENTRIES: ${nodes.map((n) => n.name).join(", ") || "none"}`; }}
+              review={aiReviewNodes}
+              apply={(d, picked) => { const add = aiMakeBom(d, picked, assetId); update((x) => { add.forEach((n) => x.bomNodes.push(n)); return x; }); }} />
             <Btn small variant="ghost" onClick={() => setCopyOpen(true)}><Copy size={13} /> Copy BOM from another asset</Btn>
             <Btn small variant="ghost" onClick={() => openAdd(null)}><Plus size={13} /> Add component</Btn>
           </div>
@@ -2330,17 +2514,20 @@ function AssetsView({ data, update, role, goToOrder, deepLinkAssetId, onConsumeD
 
   const asset = data.assets.find((a) => a.id === selected);
 
-  const openAdd = () => { pre.reset(); setForm(blank); initial.current = JSON.stringify(blank); setModal("add"); };
-  const openEdit = () => { pre.reset(); const f = { ...asset }; setForm(f); initial.current = JSON.stringify(f); setModal("edit"); };
+  const aiBomRef = useRef(null); // v2.7: BOM drafted by AI, added when the new asset is saved
+  const openAdd = () => { pre.reset(); aiBomRef.current = null; setForm(blank); initial.current = JSON.stringify(blank); setModal("add"); };
+  const openEdit = () => { pre.reset(); aiBomRef.current = null; const f = { ...asset }; setForm(f); initial.current = JSON.stringify(f); setModal("edit"); };
   const save = () => {
     if (!form.name.trim()) return;
     update((d) => {
       if (modal === "add") {
         const id = uid("a");
         d.assets.push({ id, ...form, name: form.name.trim(), createdBy: null });
+        if (aiBomRef.current) { aiMakeBom(aiBomRef.current.draft, aiBomRef.current.picked, id).forEach((n) => d.bomNodes.push(n)); aiBomRef.current = null; }
         setSelected(id);
       } else {
         Object.assign(d.assets.find((a) => a.id === asset.id), form, { name: form.name.trim() });
+        if (aiBomRef.current) { aiMakeBom(aiBomRef.current.draft, aiBomRef.current.picked, asset.id).forEach((n) => d.bomNodes.push(n)); aiBomRef.current = null; }
       }
       return d;
     });
@@ -2491,6 +2678,30 @@ function AssetsView({ data, update, role, goToOrder, deepLinkAssetId, onConsumeD
       {modal && (
         <Modal title={modal === "add" ? "Add asset" : "Edit asset"} info="asset" onClose={() => closeGuard(isDirty, save, () => setModal(null))} wide>
           {canWrite(role) && <PrefillBar p={pre} form={form} />}
+          {canWrite(role) && (
+            <div style={{ marginBottom: 10 }}>
+              <AiBuildButton kind="asset" title="Build an Asset with AI" hint="e.g. Carrier 3-ton heat pump with a gas furnace in the basement mechanical room, installed 2019. Give me a bill of materials."
+                context={() => aiLocCtx(data)}
+                review={(d) => ({
+                  fields: [["Name", aiStr(d.name, 160)], ["Category", aiStr(d.category, 60)], ["Manufacturer", aiStr(d.manufacturer, 80)], ["Model", aiStr(d.model, 80)], ["Serial", aiStr(d.serial, 80)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Major asset", d.isMajor ? "Yes" : ""], ["Notes", aiStr(d.notes, 500)]].filter(([, v]) => v),
+                  items: aiReviewNodes({ nodes: d.bom }).items,
+                })}
+                apply={(d, picked) => {
+                  const set = {};
+                  if (aiStr(d.name, 160)) set.name = aiStr(d.name, 160);
+                  if (aiStr(d.category, 60)) set.category = aiStr(d.category, 60);
+                  if (aiStr(d.manufacturer, 80)) set.manufacturer = aiStr(d.manufacturer, 80);
+                  if (aiStr(d.model, 80)) set.model = aiStr(d.model, 80);
+                  if (aiStr(d.serial, 80)) set.serial = aiStr(d.serial, 80);
+                  if (aiStr(d.manualUrl, 300)) set.manualUrl = aiStr(d.manualUrl, 300);
+                  if (aiStr(d.notes, 500)) set.notes = aiStr(d.notes, 500);
+                  if (typeof d.isMajor === "boolean") set.isMajor = d.isMajor;
+                  const loc = aiIdOrBlank(data.locations, d.locationId); if (loc) set.locationId = loc;
+                  setForm((f) => ({ ...f, ...set }));
+                  aiBomRef.current = { draft: { nodes: d.bom }, picked };
+                }} />
+            </div>
+          )}
           <div className="hk-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <Field label="Name" required><PrefillInput p={pre} field="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label="Category">
@@ -2605,6 +2816,11 @@ function PartEditModal({ data, update, part, currentUser, role, onClose, onSaved
   return (
     <Modal title={part ? `Edit ${formatPartNum(part.partNumber)}` : "New part"} info="part" onClose={() => closeGuard(isDirty, save, onClose)} wide>
       <PrefillBar p={pre} form={form} />
+      <div style={{ marginBottom: 10 }}>
+        <AiBuildButton kind="part" title="Build a Part with AI" hint="e.g. Replacement 16x25x1 MERV 11 furnace filter, 12 pack, from a supplier link."
+          review={(d) => ({ fields: [["Name", aiStr(d.name, 160)], ["Description", aiStr(d.description, 400)], ["Manufacturer", aiStr(d.manufacturer, 80)], ["Part number", aiStr(d.manufacturerPartNumber, 80)], ["Cost", aiNum(d.cost) ? aiNum(d.cost) : ""], ["Link", aiStr(d.link, 300)]].filter(([, x]) => x) })}
+          apply={(d) => { const set = {}; for (const [k, n] of [["name", 160], ["description", 400], ["manufacturer", 80], ["manufacturerPartNumber", 80], ["link", 300]]) if (aiStr(d[k], n)) set[k] = aiStr(d[k], n); if (aiNum(d.cost)) set.cost = String(aiNum(d.cost)); setForm((f) => ({ ...f, ...set })); }} />
+      </div>
       <Field label="Name" required><PrefillInput p={pre} field="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. 16x25x1 Furnace Filter" /></Field>
       <Field label="Description"><PrefillInput p={pre} field="description" multiline style={{ minHeight: 50 }} value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
       <AssetBomPicker data={data} assetId={form.assetId} bomNodeId={form.bomNodeId} onChange={({ assetId, bomNodeId }) => setForm({ ...form, assetId, bomNodeId })} />
@@ -3287,6 +3503,24 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
 
       {isFormOpen && (
         <Modal title={modal === "new" ? "Submit a work request" : "Edit work request"} info="wrForm" onClose={() => closeGuard(isDirty, modal === "new" ? submitRequest : saveEditRequest, () => setModal(null))} wide>
+          {modal === "new" && (
+            <div style={{ marginBottom: 10 }}>
+              <AiBuildButton kind="workRequest" title="Build a Work Request with AI" hint="e.g. The kitchen tap has been dripping for a week and the cabinet underneath is damp. Fairly urgent."
+                context={() => aiLocCtx(data) + "\n" + aiAssetCtx(data)}
+                review={(d) => ({ fields: [["Title", aiStr(d.title, 160)], ["Description", aiStr(d.description, 1200)], ["Priority", aiPick(d.priority, PRIORITIES)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Asset", (data.assets.find((x) => x.id === d.assetId) || {}).name || ""], ["Required by", aiDate(d.requiredByDate)], ["Suggested type", aiPick(d.suggestedType, ["Corrective", "PM", "Benchmark"])]].filter(([, v]) => v) })}
+                apply={(d) => {
+                  const set = {};
+                  if (aiStr(d.title, 160)) set.title = aiStr(d.title, 160);
+                  if (aiStr(d.description, 1200)) set.description = aiStr(d.description, 1200);
+                  if (aiPick(d.priority, PRIORITIES)) set.priority = d.priority;
+                  const as = data.assets.find((x) => x.id === d.assetId); if (as) { set.assetId = as.id; if (!aiIdOrBlank(data.locations, d.locationId) && as.locationId) set.locationId = as.locationId; }
+                  const loc = aiIdOrBlank(data.locations, d.locationId); if (loc) set.locationId = loc;
+                  if (aiDate(d.requiredByDate)) set.requiredByDate = aiDate(d.requiredByDate);
+                  if (aiPick(d.suggestedType, ["Corrective", "PM", "Benchmark"])) set.suggestedType = d.suggestedType;
+                  setForm((f) => ({ ...f, ...set }));
+                }} />
+            </div>
+          )}
           <Field label="Title" required><input style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What needs attention?" autoFocus /></Field>
           <Field label="Description" required><textarea style={{ ...inputStyle, minHeight: 70 }} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <div className="hk-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -3811,7 +4045,17 @@ function WorkOrdersView({ data, update, role, currentUser, currentUserId, openId
         title="Work Orders"
         subtitle="The record of all maintenance work, from active to closed."
         info={PAGE_INFO.orders}
-        action={canWrite(role) && <Btn variant="primary" onClick={openNew}><Plus size={15} /> New work order</Btn>}
+        action={canWrite(role) && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {isAdmin(role) && (
+              <AiBuildButton small={false} kind="pmProgram" label="Build PM Program with AI" title="Build a PM Program with AI" hint="e.g. A maintenance program for my 2015 house: furnace, central air, water heater, sump pump, smoke and CO alarms, gutters, and the deck. Keep it practical."
+                context={() => aiLocCtx(data) + "\n" + aiAssetCtx(data)}
+                review={(d) => ({ noun: "PM Base", items: aiPmItems(d, data).map((it) => ({ key: it.key, label: it.title, detail: `every ${it.frequencyValue} ${it.frequencyUnit}${it.assetId ? " · " + ((data.assets.find((x) => x.id === it.assetId) || {}).name || "") : ""}` })) })}
+                apply={(d, picked) => { const chosen = aiPmItems(d, data).filter((it) => picked.has(it.key)); update((x) => { aiCreatePmBases(x, chosen); return x; }); }} />
+            )}
+            <Btn variant="primary" onClick={openNew}><Plus size={15} /> New work order</Btn>
+          </div>
+        )}
       />
       <div className="hk-grid-fixed2" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16 }}>
         <LocationNavTree data={data} selectedId={locFilter} onSelect={setLocFilter} />
@@ -3936,6 +4180,26 @@ function WorkOrdersView({ data, update, role, currentUser, currentUserId, openId
       )}
       {modal === "new" && (
         <Modal title="New work order" info="newWo" onClose={() => closeGuard(isDirty, createWO, () => setModal(null))} wide>
+          <div style={{ marginBottom: 10 }}>
+            <AiBuildButton kind="workOrder" title="Build a Work Order with AI" hint="e.g. Replace the furnace filter and check the condensate drain; it's a 16x25x1 filter. Needed before the end of the month."
+              context={() => aiLocCtx(data) + "\n" + aiAssetCtx(data)}
+              review={(d) => ({ fields: [["Title", aiStr(d.title, 160)], ["Type", aiPick(d.type, ["Corrective", "Unplanned", "Benchmark", "PM"])], ["Priority", aiPick(d.priority, PRIORITIES)], ["Description", aiStr(d.description, 1500)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Asset", (data.assets.find((x) => x.id === d.assetId) || {}).name || ""], ["Required by", aiDate(d.requiredByDate)], ["Hours per person", execOn() && aiNum(d.estHours) ? aiNum(d.estHours) : ""], ["People needed", execOn() && aiNum(d.crewRequired) ? aiNum(d.crewRequired) : ""], ["Failure code", aiPick(d.failureCode, FAILURE_CODES)], ["Root cause", aiStr(d.rootCause, 300)]].filter(([, v]) => v) })}
+              apply={(d) => {
+                const set = {};
+                if (aiStr(d.title, 160)) set.title = aiStr(d.title, 160);
+                if (aiPick(d.type, ["Corrective", "Unplanned", "Benchmark", "PM"])) set.type = d.type;
+                if (aiPick(d.priority, PRIORITIES)) set.priority = d.priority;
+                if (aiStr(d.description, 1500)) set.description = aiStr(d.description, 1500);
+                const as = data.assets.find((x) => x.id === d.assetId); if (as) { set.assetId = as.id; if (as.locationId) set.locationId = as.locationId; }
+                const loc = aiIdOrBlank(data.locations, d.locationId); if (loc) set.locationId = loc;
+                if (aiDate(d.requiredByDate)) set.requiredByDate = aiDate(d.requiredByDate);
+                if (execOn() && aiNum(d.estHours)) set.estHours = String(aiNum(d.estHours));
+                if (execOn() && aiNum(d.crewRequired)) set.crewRequired = String(Math.max(1, Math.round(aiNum(d.crewRequired))));
+                if (aiPick(d.failureCode, FAILURE_CODES)) set.failureCode = d.failureCode;
+                if (aiStr(d.rootCause, 300)) set.rootCause = aiStr(d.rootCause, 300);
+                setForm((f) => ({ ...f, ...set }));
+              }} />
+          </div>
           <Field label="Title" required><input style={inputStyle} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus /></Field>
           <Field label="Type">
             <select style={{ ...inputStyle, maxWidth: 280 }} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
@@ -4297,6 +4561,13 @@ function VendorsView({ data, update, role, currentUser }) {
       {modal && (
         <Modal title={modal === "add" ? "Add vendor" : "Edit vendor"} info="vendor" onClose={() => closeGuard(isDirty, save, () => setModal(null))}>
           {canWrite(role) && <PrefillBar p={pre} form={form} />}
+          {canWrite(role) && (
+            <div style={{ marginBottom: 10 }}>
+              <AiBuildButton kind="vendor" title="Build a Vendor with AI" hint="e.g. Our regular plumber, Smith & Sons Plumbing, in Hamilton. Link to their website if you have one."
+                review={(d) => ({ fields: [["Name", aiStr(d.name, 160)], ["Specialty", aiStr(d.specialty, 120)], ["Contact", aiStr(d.contact, 200)], ["Link", aiStr(d.link, 300)], ["Notes", aiStr(d.notes, 600)]].filter(([, x]) => x) })}
+                apply={(d) => { const set = {}; for (const [k, n] of [["name", 160], ["specialty", 120], ["contact", 200], ["link", 300], ["notes", 600]]) if (aiStr(d[k], n)) set[k] = aiStr(d[k], n); setForm((f) => ({ ...f, ...set })); }} />
+            </div>
+          )}
           <Field label="Name" required><PrefillInput p={pre} field="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Specialty"><input style={inputStyle} value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} /></Field>
           <Field label="Contact"><input style={inputStyle} value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></Field>
@@ -4771,6 +5042,7 @@ function settingsToRows(cfg, logoDataUrl) {
     ["features.homeAssistantAlarms", cfg.features.homeAssistantAlarms ? "yes" : "no"],
     ["features.linkPrefill", cfg.features.linkPrefill === false ? "no" : "yes"],
     ["features.linkPrefillAi", cfg.features.linkPrefillAi ? "yes" : "no"],
+    ["features.aiBuilder", cfg.features.aiBuilder === false ? "no" : "yes"],
   ];
   const m = /^data:([^;]+);base64,(.*)$/s.exec(logoDataUrl || "");
   if (m) {
@@ -4823,6 +5095,7 @@ function rowsToSettings(rows) {
   if ("features.homeAssistantAlarms" in map) features.homeAssistantAlarms = isYes(map["features.homeAssistantAlarms"]);
   if ("features.linkPrefill" in map) features.linkPrefill = isYes(map["features.linkPrefill"]);
   if ("features.linkPrefillAi" in map) features.linkPrefillAi = isYes(map["features.linkPrefillAi"]);
+  if ("features.aiBuilder" in map) features.aiBuilder = isYes(map["features.aiBuilder"]);
   let logoDataUrl;
   const chunkKeys = Object.keys(map).filter((k) => /^logo\.chunk\d+$/.test(k)).sort();
   if (chunkKeys.length && map["logo.mime"]) {
@@ -5523,7 +5796,7 @@ async function offerEmailCredentials(dialog, user, password) {
     await dialog.alertMsg(`${user.username} has an email address, but email isn't set up on the server (SMTP), so the sign-in details can't be emailed. Give them the username and temporary password yourself.`);
     return;
   }
-  const ok = await dialog.confirm(`Email ${user.username}'s username, temporary password and a sign-in link to ${user.email}?`);
+  const ok = await dialog.confirm(`Email ${user.username}'s username, temporary password and a sign-in link to ${user.email}?`, { okLabel: "Send", danger: false });
   if (!ok) return;
   try { await api.emailCredentials(user.id, password); await dialog.alertMsg(`Sent to ${user.email}.`); }
   catch (err) { await dialog.alertMsg(err.message || "Couldn't send the email."); }
@@ -6372,6 +6645,17 @@ function PmWizardCatalogEditor({ data, update }) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Btn small variant="ghost" onClick={resetToDefault}>Reset to default</Btn>
         <Btn small onClick={openAdd}><Plus size={13} /> Add an entry</Btn>
+        <AiBuildButton kind="pmTemplate" label="Build Templates with AI" title="Build PM Templates with AI" hint="e.g. Add templates for an ice arena: ice plant checks, Zamboni service, dasher boards, dehumidifiers, and the rink floor."
+          context={() => `EXISTING TYPES: ${[...new Set(catalog.map(catType))].join(", ")}\nEXISTING SUB TYPES: ${[...new Set(catalog.map(catCategory))].join(", ")}\nEXISTING TITLES (do not repeat): ${catalog.slice(0, 120).map((i) => i.title).join("; ")}`}
+          review={(d) => ({ noun: "template", items: (Array.isArray(d.items) ? d.items.slice(0, 40) : []).filter((i) => aiStr(i && i.title)).map((i, k) => ({ key: k, label: aiStr(i.title, 160), detail: `${aiStr(i.type, 40) || "Home"} · ${aiStr(i.category, 60) || "General"} · every ${aiFreq(i).frequencyValue} ${aiFreq(i).frequencyUnit}` })) })}
+          apply={(d, picked) => {
+            const add = (Array.isArray(d.items) ? d.items.slice(0, 40) : []).map((i, k) => ({ i, k })).filter(({ i, k }) => picked.has(k) && aiStr(i && i.title)).map(({ i }) => ({
+              id: uid("wc"), type: aiStr(i.type, 40) || "Home", category: aiStr(i.category, 60), title: aiStr(i.title, 160), description: aiStr(i.description, 600),
+              frequencyValue: Number(aiFreq(i).frequencyValue), frequencyUnit: aiFreq(i).frequencyUnit,
+              crewRequired: aiNum(i.crewRequired) >= 1 ? Math.round(aiNum(i.crewRequired)) : 1, estHours: aiNum(i.estHours) > 0 ? aiNum(i.estHours) : 1, zones: "all",
+            }));
+            update((x) => { x.pmWizardCatalog = [...effectiveWizardCatalog(x), ...add]; return x; });
+          }} />
         <Btn small variant="primary" onClick={() => setViewOpen(true)}><Search size={13} /> View entries</Btn>
       </div>
       {viewOpen && (
@@ -6640,6 +6924,12 @@ function FeaturesCard() {
         </div></span>
       </label>
       <label style={row}>
+        <input type="checkbox" disabled={busy || !hasKey} checked={SETTINGS.features.aiBuilder !== false && hasKey} onChange={(e) => setFeature("aiBuilder", e.target.checked)} style={{ marginTop: 3 }} />
+        <span>Build with AI<InfoTip k="aiBuild" /><div style={note}>
+          Adds a Build with AI button to the entry screens (work orders, requests, assets, bills of materials, locations, vendors, parts, PM programs and PM templates). You describe what you want, the AI drafts it and you review it before anything is saved. Uses Google's Gemini service with the same key as link look-ups (Gemini API key detected: <strong>{hasKey ? "yes" : "no"}</strong>{hasKey ? "" : " — set GEMINI_API_KEY in the Docker environment to use it"}). What you type, any links and your location and asset names are sent to Gemini.
+        </div></span>
+      </label>
+      <label style={row}>
         <input type="checkbox" disabled={busy} checked={!!SETTINGS.features.executionScheduling} onChange={(e) => setFeature("executionScheduling", e.target.checked)} style={{ marginTop: 3 }} />
         <span>Execution-based scheduling and time keeping<div style={note}>Renames Schedule to Labour assignment. Work orders get an estimated time per executor and a number of executors required; several executors can be assigned; the schedule gains Week and Day views with drag-and-drop; executors enter hours worked when completing a work order.</div></span>
       </label>
@@ -6669,18 +6959,19 @@ function FeaturesCard() {
    live in PAGE_INFO above.
 ============================================================ */
 const FEATURE_INFO = {
+  aiBuild: ["Build with AI turns a description (and any links you paste) into a draft: a work order, request, asset, bill of materials, location structure, vendor, part, PM program or PM templates.", "Select Build with AI on the screen, describe what you want, select Build draft, review the result and apply it. For a single item it fills in the form so you can edit and save it; for lists you tick what to add. Nothing is saved without you.", "Owners, managers and executors where they can create the item; the Owner can switch it off under Features."],
   changelog: ["Everything that changed in each version of the app, newest first.", "Scroll to read. The installed version is marked.", "Everyone."],
   bomCopy: ["Copies the bill of materials from another asset onto this one, so similar equipment does not need to be typed twice.", "Choose the source asset and select Copy. Rows are added to the existing list.", "Managers and owners."],
   designations: ["Designations give an executor extra duties: Planner (assign and plan work), Scheduler (use the Workforce schedule) and Specialist (flagged for specialist jobs).", "Tick them on the member row. Owners and managers can also be flagged as an Executor so that work can be assigned to them (off by default).", "Owners only."],
   digests: ["The emails you receive: the daily digests that apply to your role and designations, such as alarms, low stock, my schedule and team schedule.", "Tick the ones you want, then choose how often (every day, weekdays or weekly) and the time of day. App updates lists what changed in new versions since your last email. Emails only go out when your Owner has set up email and your account has an address.", "Everyone with an email address."],
   editShift: ["Change or delete one scheduled shift.", "Tap a shift on the Workforce schedule, adjust start, duration or end (fill any two) or pick a daily template, then Save, or choose Delete shift.", "Owners, managers and schedulers."],
-  metrics: ["Owner measures of how maintenance is running over the chosen period.", "Pick a period at the top right. Lead time and verification time are only measured for work from v2.6 onward.", "Owners only."],
-  mWr: ["How many work requests each person entered.", "Nothing to maintain; it counts requests in the period.", "Owners only."],
-  mEff: ["Hours booked against the estimate on completed work orders, per executor.", "Under 100% means faster than estimated; over 100% means slower.", "Owners only."],
-  mComp: ["Of the work orders scheduled for a person, the share they worked on the scheduled day.", "Nothing to maintain; it uses scheduled dates and logged hours.", "Owners only."],
-  mLead: ["Average time from a work request being created to it becoming a work order.", "Only requests created from v2.6 onward are included.", "Owners only."],
-  mVerify: ["Average time from a work order being Completed to it being verified and Closed.", "Only work completed from v2.6 onward is included.", "Owners only."],
-  mReactive: ["The share of work orders that were unplanned, out of all work orders in the period. Lower is generally better.", "Nothing to maintain; it counts work order types.", "Owners only."],
+  metrics: ["Owner measures of how maintenance is running over the chosen period.", "Pick a period at the top right. Lead time and verification time are only measured for work from v2.6 onward.", "Owners and managers."],
+  mWr: ["How many work requests each person entered.", "Nothing to maintain; it counts requests in the period.", "Owners and managers."],
+  mEff: ["Hours booked against the estimate on completed work orders, per executor.", "Under 100% means faster than estimated; over 100% means slower.", "Owners and managers."],
+  mComp: ["Of the work orders scheduled for a person, the share they worked on the scheduled day.", "Nothing to maintain; it uses scheduled dates and logged hours.", "Owners and managers."],
+  mLead: ["Average time from a work request being created to it becoming a work order.", "Only requests created from v2.6 onward are included.", "Owners and managers."],
+  mVerify: ["Average time from a work order being Completed to it being verified and Closed.", "Only work completed from v2.6 onward is included.", "Owners and managers."],
+  mReactive: ["The share of work orders that were unplanned, out of all work orders in the period. Lower is generally better.", "Nothing to maintain; it counts work order types.", "Owners and managers."],
   removeAsset: ["Retires an asset. If nothing links to it, it can be deleted permanently; otherwise it is archived (hidden, history kept).", "Read the pop-up and choose Archive or, when offered, Delete.", "Owners and managers; managers can delete only unlinked assets."],
   // ---- cards and sections
   nextDays: ["A seven-day look-ahead of work orders that are scheduled to start soon.", "Each box is one day. Click a work order to open it.", "Everyone can see it."],
@@ -8547,14 +8838,16 @@ function MaintEnhanceAppInner() {
     <DialogProvider>
       <div style={{ minHeight: "100vh", background: C.bg, fontFamily: FONT_BODY }}>
         <GlobalStyle />
-        <Sidebar tab={tab} setTab={setTab} open={sidebarOpen} role={role} counts={counts} onNavigate={() => { if (window.innerWidth <= 860) setSidebarOpen(false); }} />
+        <Sidebar tab={tab} setTab={setTab} open={sidebarOpen} onClose={() => setSidebarOpen(false)} role={role} counts={counts} onNavigate={() => { if (window.innerWidth <= 860) setSidebarOpen(false); }} />
         {sidebarOpen && <div className="hk-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
         <div className="hk-main-shell" style={{ marginLeft: sidebarOpen ? 216 : 0, transition: "margin .15s ease" }}>
           <div className="hk-topbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", borderBottom: `1px solid ${C.line}`, background: C.panel, position: "sticky", top: 0, zIndex: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-              <button onClick={() => setSidebarOpen((o) => !o)} className="hk-tap" style={{ background: "none", border: "none", cursor: "pointer", color: C.ink }}>
-                {sidebarOpen ? <ChevronLeft size={18} /> : <Menu size={18} />}
-              </button>
+              {!sidebarOpen && (
+                <button onClick={() => setSidebarOpen(true)} title="Open the menu" aria-label="Open the menu" data-open-sidebar className="hk-tap" style={{ background: "none", border: "none", cursor: "pointer", color: C.ink }}>
+                  <Menu size={18} />
+                </button>
+              )}
               {SETTINGS.brand.topBarTitle && (
                 <span style={{ fontFamily: FONT_HEAD, fontSize: 15, fontWeight: 600, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{SETTINGS.brand.topBarTitle}</span>
               )}
