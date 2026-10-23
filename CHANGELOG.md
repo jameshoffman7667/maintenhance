@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.8.0 - 2026-10-22
+**Short:** Add /healthz endpoint and image healthcheck
+**Long:** GET /healthz on PORT returns {status:ok, version} (the image tag) with no login, no private data and no outside checks; 503 if the database fails. Image HEALTHCHECK and compose use it, 30s start period. Releases now push to GitHub only.
+
 ## v2.7.1 - 2026-10-22
 **Short:** Move to tag-based release workflow
 **Long:** Version tags like v2.7.1 now build and push mybadreligon/maintenhance 2.7.1, 2.7 and latest, then create the GitHub release. Adds deploy/RELEASE.md and deploy/compose.yaml and replaces the push-to-main workflow. No app changes.

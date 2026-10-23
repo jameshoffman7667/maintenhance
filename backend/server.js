@@ -18,6 +18,23 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 8040;
 
+// v2.8.0: health probe for Docker and uptime checks. Registered before the
+// body parser, cookies, auth and the SPA catch-all so it needs no login and
+// nothing can answer it with the web page instead. It checks only the local
+// database (no outside services) and returns no private data. The version is
+// the full package version (e.g. 2.8.0), the same string as the image tag.
+const APP_VERSION = require("./package.json").version;
+app.get("/healthz", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    db.prepare("SELECT 1").get();
+    res.json({ status: "ok", version: APP_VERSION });
+  } catch (e) {
+    console.error("[healthz] database check failed:", e.message);
+    res.status(503).json({ status: "error", version: APP_VERSION });
+  }
+});
+
 // First-run seed = the empty base shape (see seed.js).
 function buildSeed() {
   return JSON.parse(JSON.stringify(SEED));

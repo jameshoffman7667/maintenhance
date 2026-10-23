@@ -46,4 +46,12 @@ ARG PORT=8040
 ENV PORT=$PORT
 EXPOSE $PORT
 
+# v2.8.0: liveness check against the public, login-free /healthz endpoint.
+# Shell form so ${PORT} follows the port the app was started with; 127.0.0.1
+# (not localhost) avoids an IPv6 lookup against an IPv4-only listener; node is
+# used because the slim image has no wget or curl. The same check is in
+# deploy/compose.yaml.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:${PORT}/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["node", "server.js"]

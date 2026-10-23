@@ -34,6 +34,8 @@ self.addEventListener("fetch", (event) => {
 
   // Never cache API calls — always hit the network.
   if (url.pathname.startsWith(API_PATH_PREFIX)) return;
+  // Health probe: always live, never cached.
+  if (url.pathname === new URL("healthz", SCOPE).pathname) return;
 
   if (event.request.method !== "GET") return;
 

@@ -94,6 +94,8 @@ Each release also leaves `deploy/RELEASE.md` (what the server needs for that
 version) and `deploy/compose.yaml` (reference compose pinned to the exact
 version tag).
 
+The app answers `GET /healthz` (no login) with `{"status":"ok","version":"X.Y.Z"}`; the image and compose health checks use it.
+
 Unlike GitHub Container Registry, Docker Hub needs credentials you set
 up yourself:
 

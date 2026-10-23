@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.7.1
+Current release: v2.8.0
 
 ## Pending
 
@@ -21,10 +21,10 @@ Requested: 2026-10-02 or earlier (James)
 Type: minor (new feature)        Status: Pending
 Notes / questions: On the work request review screen, a Build with AI button drafts the work order (type, priority, asset, parts, steps) from the request, for review before saving.
 
-### P-6 - Runtime hardening to match the app spec
+### P-6 - Runtime hardening to match the app spec (healthz and HEALTHCHECK moved to P-9)
 Requested: 2026-10-22 (logged by Claude from the spec audit during v2.7.1, not requested by James)
-Type: minor (new /healthz endpoint)        Status: Pending
-Notes / questions: Add tini as the image ENTRYPOINT, run as a non-root user, add a public /healthz returning {status, version} that checks the database, add an image HEALTHCHECK on 127.0.0.1 using ${PORT}, and stop cleanly on SIGTERM within 10 seconds (server.js has no SIGTERM handler today, so a stop may end in exit 137). Question: non-root changes who can write the existing /data and /files folders, so the host folders would need a one-time chown to 1000:100. OK to do that?
+Type: patch        Status: Pending
+Notes / questions: Add tini as the image ENTRYPOINT, run as a non-root user, and stop cleanly on SIGTERM within 10 seconds (server.js has no SIGTERM handler today, so a stop may end in exit 137). Question: non-root changes who can write the existing /data and /files folders, so the host folders would need a one-time chown to 1000:100. OK to do that?
 
 ### P-7 - PWA gaps against the app spec
 Requested: 2026-10-22 (logged by Claude from the spec audit during v2.7.1, not requested by James)
@@ -47,3 +47,8 @@ Notes / questions: A tag `vMAJOR.MINOR.PATCH` runs `.github/workflows/release.ym
 Requested: 2026-10-22 (James: "add a fixed field Update: now or Update: later")
 Type: patch (tooling only)        Status: Built in v2.7.1
 Notes / questions: `Update: now` only when James's build message is "build, push and update"; any other build message gives `Update: later`. v2.7.1 was built on "build and push", so it says `Update: later`. Placed after the Type line.
+
+### P-9 - Health endpoint /healthz and matching healthchecks
+Requested: 2026-10-22 (James: "Make sure the app answers GET /healthz on $PORT with {"status":"ok","version":"<same as the image tag>"}, no login, no private data, and no checks of outside services. Add a matching HEALTHCHECK to the image and the compose file, with a 30 second start period.")
+Type: minor (new endpoint)        Status: Built in v2.8.0
+Notes / questions: Answers 200 {"status":"ok","version":"2.8.0"} (full package version, equal to the image tag; the in-app label still drops a trailing .0). Checks only the local database; 503 {"status":"error",...} if that fails. Registered before auth and the web page catch-all, never cached, skipped by the service worker. Image HEALTHCHECK and deploy/compose.yaml use the same node command against 127.0.0.1:${PORT}, 30s interval, 5s timeout, 3 retries, 30s start period. Also from James: no zip delivery from now on, releases are pushed to GitHub only.

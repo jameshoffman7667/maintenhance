@@ -381,6 +381,12 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - Page titles, menu labels and pop-up titles use title case.
 - Confirmation pop-ups use the primary button colour; red is kept for destructive confirmations. The email-credentials prompt uses Send.
 
+### 3.31 Health check (v2.8.0)
+
+- `GET /healthz` on the app's `PORT` answers `{"status":"ok","version":"X.Y.Z"}` with HTTP 200. `version` is the full package version, the same string as the Docker image tag (for example 2.8.0; the in-app version label drops a trailing `.0`).
+- It needs no login and returns nothing else: no user, household or configuration data. It checks only the local database (a trivial query) and calls no outside service. If the database check fails it answers HTTP 503 with `{"status":"error","version":"X.Y.Z"}`. Responses are never cached, and the service worker does not handle this path.
+- The Docker image has a matching `HEALTHCHECK` (30 second start period, 30 second interval, 5 second timeout, 3 retries) that requests `http://127.0.0.1:${PORT}/healthz`. `deploy/compose.yaml` carries the same check.
+
 ## 4. Non-Functional Requirements
 
 | Category | Requirement |

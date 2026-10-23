@@ -1,6 +1,6 @@
 services:
   maintenhance:
-    image: mybadreligon/maintenhance:2.7.1
+    image: mybadreligon/maintenhance:2.8.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -33,12 +33,12 @@ services:
         bind:
           create_host_path: false      # pool paths must exist; fail loudly if the pool is not mounted
     healthcheck:
-      # No /healthz yet (logged as a pending change); /api/config is public and reads the settings table.
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+process.env.PORT+'/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # Same check as the image's HEALTHCHECK: public, login-free /healthz on $PORT.
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:$${PORT}/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     stop_grace_period: 15s
     logging:
       driver: json-file
