@@ -18,7 +18,7 @@ support, or a small cloud VM.
 ```
 maintenhance/
 ├── .github/workflows/
-│   └── docker-publish.yml   # CI: builds & pushes the image to Docker Hub on push
+│   └── release.yml          # CI: on a version tag, builds & pushes the image, then creates the GitHub release
 ├── Dockerfile              # multi-stage build: frontend build → backend runtime
 ├── docker-compose.yml      # pulls the Docker Hub image — no build step
 ├── .env.example             # copy to .env and fill in
@@ -80,12 +80,19 @@ git remote add origin https://github.com/jameshoffman7667/maintenhance.git
 git push -u origin main
 ```
 
-### Continuous builds via GitHub Actions → Docker Hub
+### Releases via GitHub Actions → Docker Hub
 
-`.github/workflows/docker-publish.yml` is already included. On every
-push to `main` (and on version tags like `v1.0.0`), it builds the
-Dockerfile in this repo and pushes the image to **Docker Hub** —
-tagged `latest` plus the commit SHA.
+`.github/workflows/release.yml` is already included. Nothing is built on
+a plain push to `main`. Pushing a version tag such as `v2.7.1` runs the
+workflow: it checks that the version in `backend/package.json` (and
+`frontend/package.json`) matches the tag and that `CHANGELOG.md` has an
+entry for it, builds the image, pushes `mybadreligon/maintenhance:2.7.1`,
+`:2.7` and `:latest` to **Docker Hub**, and creates the GitHub release as
+its last step.
+
+Each release also leaves `deploy/RELEASE.md` (what the server needs for that
+version) and `deploy/compose.yaml` (reference compose pinned to the exact
+version tag).
 
 Unlike GitHub Container Registry, Docker Hub needs credentials you set
 up yourself:
@@ -98,8 +105,8 @@ up yourself:
    New repository secret**, and add two secrets:
    - `DOCKERHUB_USERNAME` — your Docker Hub username
    - `DOCKERHUB_TOKEN` — the access token from step 2
-4. Push to `main` (or run the workflow manually from the **Actions**
-   tab). It'll publish to `docker.io/<DOCKERHUB_USERNAME>/maintenhance:latest`.
+4. Push a version tag (for example `git tag -a v2.7.1 -m "..." && git push origin v2.7.1`).
+   It'll publish to `docker.io/mybadreligon/maintenhance`.
 
 `docker-compose.yml` is already set to pull `mybadreligon/maintenhance:latest`.
 If your Docker Hub username is different, update the `image:` line in

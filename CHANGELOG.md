@@ -19,6 +19,12 @@ the Git commit's summary line) and a **Commit extended description**
 
 ---
 
+From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
+
+## v2.7.1 - 2026-10-22
+**Short:** Move to tag-based release workflow
+**Long:** Version tags like v2.7.1 now build and push mybadreligon/maintenhance 2.7.1, 2.7 and latest, then create the GitHub release. Adds deploy/RELEASE.md and deploy/compose.yaml and replaces the push-to-main workflow. No app changes.
+
 ## v2.7
 
 **Commit short description:** `v2.7: Build with AI, sidebar and UI polish`

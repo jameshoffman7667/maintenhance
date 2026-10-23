@@ -1,0 +1,47 @@
+services:
+  maintenhance:
+    image: mybadreligon/maintenhance:2.7.1
+    container_name: maintenhance
+    restart: unless-stopped
+    environment:
+      - TZ=America/Toronto
+      - APP_URL=${APP_URL:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - PORT=${PORT_HOST:?assign from port register}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET (openssl rand -hex 32)}
+      - DATA_DIR=/data
+      - FILES_DIR=/files
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - NOTIFY_WARRANTY_WINDOW_DAYS=${NOTIFY_WARRANTY_WINDOW_DAYS:-30}
+      - NOTIFY_UNREVIEWED_WINDOW_DAYS=${NOTIFY_UNREVIEWED_WINDOW_DAYS:-3}
+      - BACKUP_KEEP=${BACKUP_KEEP:-7}
+      - BACKUP_SNAPSHOTS=${BACKUP_SNAPSHOTS:-true}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
+    ports:
+      - "${PORT_HOST}:${PORT_HOST}"          # container port = host port
+    volumes:
+      - ${FAST_STORAGE:-/srv/dev-disk-by-uuid-758425e9-f9ca-4fbc-ad81-eaea80fdfb73/appdata-ssd}/maintenhance:/data
+      - type: bind
+        source: ${SLOW_STORAGE:-/srv/mergerfs/StoragePool/docker}/maintenhance
+        target: /files
+        bind:
+          create_host_path: false      # pool paths must exist; fail loudly if the pool is not mounted
+    healthcheck:
+      # No /healthz yet (logged as a pending change); /api/config is public and reads the settings table.
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+process.env.PORT+'/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
