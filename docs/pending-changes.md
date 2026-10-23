@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.8.0
+Current release: v2.8.1
 
 ## Pending
 
@@ -52,3 +52,8 @@ Notes / questions: `Update: now` only when James's build message is "build, push
 Requested: 2026-10-22 (James: "Make sure the app answers GET /healthz on $PORT with {"status":"ok","version":"<same as the image tag>"}, no login, no private data, and no checks of outside services. Add a matching HEALTHCHECK to the image and the compose file, with a 30 second start period.")
 Type: minor (new endpoint)        Status: Built in v2.8.0
 Notes / questions: Answers 200 {"status":"ok","version":"2.8.0"} (full package version, equal to the image tag; the in-app label still drops a trailing .0). Checks only the local database; 503 {"status":"error",...} if that fails. Registered before auth and the web page catch-all, never cached, skipped by the service worker. Image HEALTHCHECK and deploy/compose.yaml use the same node command against 127.0.0.1:${PORT}, 30s interval, 5s timeout, 3 retries, 30s start period. Also from James: no zip delivery from now on, releases are pushed to GitHub only.
+
+### P-10 - Release on a push to main, no tag push
+Requested: 2026-10-22 (James: "Change the release workflow so it never needs a tag push. Trigger it on a push to main that changes the version...")
+Type: patch (release tooling only)        Status: Built in v2.8.1
+Notes / questions: Version file is backend/package.json (frontend/package.json must match). The workflow runs on a push to main that changes backend/package.json and skips if the version number itself did not change. It fails if tag vX.Y.Z or a GitHub release for it already exists, or the CHANGELOG entry is missing or too long; builds and pushes X.Y.Z, X.Y and latest; then runs `gh release create vX.Y.Z --target $GITHUB_SHA` with the workflow's own token (contents: write), which creates the tag. The v*.*.* tag trigger remains as a manual fallback; all runs share one concurrency group. 2.7.1 and 2.8.0 were never built or tagged on GitHub; 2.8.1 is the first image. The home server app spec (v1.7) and handoff doc still describe the tag flow; this repo deliberately differs.

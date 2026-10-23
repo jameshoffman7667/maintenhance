@@ -18,7 +18,7 @@ support, or a small cloud VM.
 ```
 maintenhance/
 ├── .github/workflows/
-│   └── release.yml          # CI: on a version tag, builds & pushes the image, then creates the GitHub release
+│   └── release.yml          # CI: a push to main that bumps the version builds & pushes the image and creates the tag + GitHub release
 ├── Dockerfile              # multi-stage build: frontend build → backend runtime
 ├── docker-compose.yml      # pulls the Docker Hub image — no build step
 ├── .env.example             # copy to .env and fill in
@@ -82,13 +82,30 @@ git push -u origin main
 
 ### Releases via GitHub Actions → Docker Hub
 
-`.github/workflows/release.yml` is already included. Nothing is built on
-a plain push to `main`. Pushing a version tag such as `v2.7.1` runs the
-workflow: it checks that the version in `backend/package.json` (and
-`frontend/package.json`) matches the tag and that `CHANGELOG.md` has an
-entry for it, builds the image, pushes `mybadreligon/maintenhance:2.7.1`,
-`:2.7` and `:latest` to **Docker Hub**, and creates the GitHub release as
-its last step.
+`.github/workflows/release.yml` is already included. **A release is a
+commit pushed to `main` that changes the version; no tag is pushed by hand.**
+
+1. Bump the version in `backend/package.json` and `frontend/package.json`
+   (the same number in both; `backend/package.json` is the version file
+   the workflow watches).
+2. Add the matching `## vX.Y.Z - date` entry to `CHANGELOG.md` with a
+   `**Short:**` line (50 characters at most) and a `**Long:**` line (250
+   at most).
+3. Commit and push `main`.
+
+The workflow starts only when a push to `main` changes
+`backend/package.json`, and does nothing if the version number itself is
+unchanged. It reads the version `X.Y.Z`, fails if the tag `vX.Y.Z` already
+exists or the `CHANGELOG.md` entry is missing or too long, builds the
+image, pushes `mybadreligon/maintenhance:X.Y.Z`, `:X.Y` and `:latest` to
+**Docker Hub**, and creates the GitHub release with
+`gh release create vX.Y.Z --target $GITHUB_SHA`, which also creates the
+tag. It uses the workflow's own token (`contents: write`).
+
+Pushing a tag `v*.*.*` by hand still runs the same workflow, as a manual
+fallback only (the tag must match the version files and have no GitHub
+release yet). All runs share one queue, so the two routes cannot both
+release the same version.
 
 Each release also leaves `deploy/RELEASE.md` (what the server needs for that
 version) and `deploy/compose.yaml` (reference compose pinned to the exact
@@ -107,8 +124,8 @@ up yourself:
    New repository secret**, and add two secrets:
    - `DOCKERHUB_USERNAME` — your Docker Hub username
    - `DOCKERHUB_TOKEN` — the access token from step 2
-4. Push a version tag (for example `git tag -a v2.7.1 -m "..." && git push origin v2.7.1`).
-   It'll publish to `docker.io/mybadreligon/maintenhance`.
+4. Bump the version and push `main` as described above. It'll publish to
+   `docker.io/mybadreligon/maintenhance`.
 
 `docker-compose.yml` is already set to pull `mybadreligon/maintenhance:latest`.
 If your Docker Hub username is different, update the `image:` line in

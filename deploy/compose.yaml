@@ -1,6 +1,6 @@
 services:
   maintenhance:
-    image: mybadreligon/maintenhance:2.8.0
+    image: mybadreligon/maintenhance:2.8.1
     container_name: maintenhance
     restart: unless-stopped
     environment:

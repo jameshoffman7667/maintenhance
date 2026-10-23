@@ -1,37 +1,88 @@
 name: release
+
+# A release is a push to main that changes the version in backend/package.json
+# (frontend/package.json must carry the same number). The job reads X.Y.Z,
+# checks the CHANGELOG, builds and pushes the images X.Y.Z, X.Y and latest, and
+# creates the GitHub release with `gh release create vX.Y.Z --target $GITHUB_SHA`,
+# which also creates the tag. No tag has to be pushed by hand.
+#
+# Pushing a tag v*.*.* is kept only as a manual fallback. All runs share one
+# concurrency group so two runs never work on the same version at once, and a
+# run refuses a version whose tag (push to main) or GitHub release (tag push)
+# already exists. Tags created by this workflow's own token do not start a
+# second run.
 on:
   push:
+    branches: ["main"]
+    paths: ["backend/package.json"]
     tags: ["v*.*.*"]
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Validate release metadata
+      - name: Read version and decide whether this push is a release
+        id: detect
         shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Tag version: $VERSION"
-          # version file must match the tag (adjusted for this app: the version
-          # lives in backend/package.json, and frontend/package.json must agree)
-          if [ -f backend/package.json ]; then
-            FILE_VERSION="$(node -p "require('./backend/package.json').version")"
-            FRONT_VERSION="$(node -p "require('./frontend/package.json').version")"
-            [ "$FRONT_VERSION" = "$FILE_VERSION" ] || { echo "frontend/package.json ($FRONT_VERSION) != backend/package.json ($FILE_VERSION)"; exit 1; }
-          elif [ -f package.json ]; then
-            FILE_VERSION="$(node -p "require('./package.json').version")"
-          elif [ -f VERSION ]; then
-            FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Manual fallback: tag $GITHUB_REF_NAME"
           else
-            echo "No version file"; exit 1
+            VERSION="$(node -p "require('./backend/package.json').version")"
+            PREV=""
+            if [ -n "$BEFORE" ] && ! printf %s "$BEFORE" | grep -Eq '^0+$' && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              PREV="$(git show "$BEFORE:backend/package.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)"
+            fi
+            if [ "$PREV" = "$VERSION" ]; then
+              echo "backend/package.json version is still $VERSION: not a release, nothing to do."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Version changed: ${PREV:-<none>} -> $VERSION"
           fi
-          [ "$FILE_VERSION" = "$VERSION" ] || { echo "Version file ($FILE_VERSION) != tag ($VERSION)"; exit 1; }
+          printf %s "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Version '$VERSION' is not MAJOR.MINOR.PATCH"; exit 1; }
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "minor=${VERSION%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release metadata
+        if: steps.detect.outputs.release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.detect.outputs.version }}
+        run: |
+          set -euo pipefail
+          # version files agree with each other, and with the tag on the fallback path
+          BACK="$(node -p "require('./backend/package.json').version")"
+          FRONT="$(node -p "require('./frontend/package.json').version")"
+          [ "$FRONT" = "$BACK" ] || { echo "frontend/package.json ($FRONT) != backend/package.json ($BACK)"; exit 1; }
+          [ "$BACK" = "$VERSION" ] || { echo "Version file ($BACK) != release version ($VERSION)"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # fallback: the tag is the one being released, so a GitHub release must not exist yet
+            if gh release view "v$VERSION" >/dev/null 2>&1; then echo "GitHub release v$VERSION already exists"; exit 1; fi
+          else
+            # main push: the tag must not exist, locally fetched or on the remote
+            if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+              echo "Tag v$VERSION already exists: bump the version before pushing"; exit 1
+            fi
+            if gh release view "v$VERSION" >/dev/null 2>&1; then echo "GitHub release v$VERSION already exists"; exit 1; fi
+          fi
           # changelog must contain this version with Short <= 50 and Long <= 250 chars
           grep -q "^## v$VERSION " CHANGELOG.md || { echo "CHANGELOG.md has no entry for v$VERSION"; exit 1; }
           SHORT="$(awk -v v="## v$VERSION " 'index($0,v)==1{f=1;next} f&&/^\*\*Short:\*\*/{sub(/^\*\*Short:\*\* /,"");print;exit}' CHANGELOG.md)"
@@ -39,27 +90,31 @@ jobs:
           [ "${#SHORT}" -gt 0 ] && [ "${#SHORT}" -le 50 ] || { echo "Short is ${#SHORT} chars (max 50)"; exit 1; }
           [ "${#LONG}" -gt 0 ] && [ "${#LONG}" -le 250 ] || { echo "Long is ${#LONG} chars (max 250)"; exit 1; }
           echo "SHORT=$SHORT" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
+        if: steps.detect.outputs.release == 'true'
 
       - uses: docker/login-action@v3
+        if: steps.detect.outputs.release == 'true'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/metadata-action@v5
+        if: steps.detect.outputs.release == 'true'
         id: meta
         with:
           images: mybadreligon/${{ github.event.repository.name }}
+          # type=semver only works on tag pushes, so the tags are written out
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ steps.detect.outputs.version }}
+            type=raw,value=${{ steps.detect.outputs.minor }}
             type=raw,value=latest
           labels: |
-            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.version=${{ steps.detect.outputs.version }}
 
       - uses: docker/build-push-action@v6
+        if: steps.detect.outputs.release == 'true'
         with:
           context: .
           platforms: linux/amd64
@@ -70,6 +125,13 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: GitHub release
+        if: steps.detect.outputs.release == 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME - $SHORT" --notes-file <(awk -v v="## $GITHUB_REF_NAME " 'index($0,v)==1{f=1;next} f&&/^## v/{exit} f' CHANGELOG.md)
+          VERSION: ${{ steps.detect.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v v="## v$VERSION " 'index($0,v)==1{f=1;next} f&&/^## v/{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          # --target makes gh create the tag vX.Y.Z on this commit (ignored if the tag already exists)
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION - $SHORT" --notes-file "$RUNNER_TEMP/notes.md"
