@@ -36,6 +36,11 @@ Requested: 2026-10-22 (logged by Claude from the spec audit during v2.7.1, not r
 Type: patch        Status: Pending
 Notes / questions: (a) The in-app version history parses only the old "Commit short description" format, so v2.7.1 and later entries show their Short and Long lines as raw text under an empty title; make it read Short and Long. (b) Move the functional spec to docs/functional-spec.md and add Mobile layout, Desktop layout and PWA sections (it is Home_CMMS_Functional_Specification.md at the repo root today). (c) Add a one-command automated test run (there are no tests today) covering the version, changelog length, PWA file and healthcheck rules.
 
+### P-11 - Make deploy notes match the real server stack
+Requested: 2026-10-22 (from Claude Code's deploy plan for v2.8.1, relayed by James)
+Type: patch (docs and compose only)        Status: Pending
+Notes / questions: (a) deploy/RELEASE.md "Verify after deploy" uses curl, but vm101 has wget and no curl; use `wget -qO- http://127.0.0.1:<PORT>/healthz`. (b) The server stack is this repo's docker-compose.yml, not deploy/compose.yaml; its data paths come from DATA_PATH and FILES_PATH in the stack's .env, not the FAST_STORAGE and SLOW_STORAGE defaults. Say so in RELEASE.md and in the README's deploy section. (c) docker-compose.yml has no healthcheck; add the same /healthz healthcheck (30s start period) so the repo file and the server stack agree, and decide whether it should also move off :latest to a pinned tag. (d) maintenhance_twl (port 8041) runs the same image and digest as the home instance; RELEASE.md should mention it needs its own separate update. (e) Spec copy: Claude Code reports the homelab repo's app spec is v1.6 with the push-to-main flow and no v1.7; the copy used in this chat says v1.7 with the tag flow. Reconcile before the next release.
+
 ## Done
 
 ### P-4 - Switch to the standard release flow from the home server app spec
