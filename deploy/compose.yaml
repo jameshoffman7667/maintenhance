@@ -1,6 +1,6 @@
 services:
   maintenhance:
-    image: mybadreligon/maintenhance:2.8.1
+    image: mybadreligon/maintenhance:2.9.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -23,6 +23,8 @@ services:
       - BACKUP_SNAPSHOTS=${BACKUP_SNAPSHOTS:-true}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-}
+      - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
+      - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}
     ports:
       - "${PORT_HOST}:${PORT_HOST}"          # container port = host port
     volumes:

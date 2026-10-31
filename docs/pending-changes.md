@@ -2,24 +2,9 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.8.1
+Current release: v2.9.0
 
 ## Pending
-
-### P-1 - Build with AI: multi-entity from a list (text or attachment)
-Requested: 2026-10-02 or earlier (James)
-Type: minor (new feature)        Status: Pending
-Notes / questions: The prompt box accepts a pasted list or an attached file (txt/csv/pdf/image) and the AI returns several drafts at once (e.g. many work orders, assets, parts). Drafts are presented one at a time for approval in manual-edit mode (edit, approve, skip). Below each form the AI adds a "Clarifications" section with multiple-choice or free-text questions it needs answered to refine that item; answers re-run the draft.
-
-### P-2 - Explore: forward an email or text message to the app to create an AI-built work request
-Requested: 2026-10-02 or earlier (James)
-Type: exploration only        Status: Pending
-Notes / questions: Feasibility notes were given in chat. Not built until options are chosen.
-
-### P-3 - Build with AI button to convert a work request to a work order
-Requested: 2026-10-02 or earlier (James)
-Type: minor (new feature)        Status: Pending
-Notes / questions: On the work request review screen, a Build with AI button drafts the work order (type, priority, asset, parts, steps) from the request, for review before saving.
 
 ### P-6 - Runtime hardening to match the app spec (healthz and HEALTHCHECK moved to P-9)
 Requested: 2026-10-22 (logged by Claude from the spec audit during v2.7.1, not requested by James)
@@ -42,6 +27,22 @@ Type: patch (docs and compose only)        Status: Pending
 Notes / questions: (a) deploy/RELEASE.md "Verify after deploy" uses curl, but vm101 has wget and no curl; use `wget -qO- http://127.0.0.1:<PORT>/healthz`. (b) The server stack is this repo's docker-compose.yml, not deploy/compose.yaml; its data paths come from DATA_PATH and FILES_PATH in the stack's .env, not the FAST_STORAGE and SLOW_STORAGE defaults. Say so in RELEASE.md and in the README's deploy section. (c) docker-compose.yml has no healthcheck; add the same /healthz healthcheck (30s start period) so the repo file and the server stack agree, and decide whether it should also move off :latest to a pinned tag. (d) maintenhance_twl (port 8041) runs the same image and digest as the home instance; RELEASE.md should mention it needs its own separate update. (e) Spec copy: Claude Code reports the homelab repo's app spec is v1.6 with the push-to-main flow and no v1.7; the copy used in this chat says v1.7 with the tag flow. Reconcile before the next release.
 
 ## Done
+
+### P-1 - Build with AI: multi-entity from a list (text or attachment)
+Requested: 2026-10-02 or earlier (James)
+Type: minor (new feature)        Status: Built in v2.9.0
+Notes / questions: Checkbox "This is a list" in Build with AI on the work order, work request, asset, vendor and part forms; paste a list and/or attach up to 3 text, CSV, PDF or image files. Drafts are reviewed one at a time in an editable form (Add or Skip), with the AI's multiple-choice or text questions at the bottom of each item and an Update draft button. Locations, BOM, PM programs and templates keep their existing tick-box lists.
+
+### P-2 - Forward an email or text message to the app to create an AI-built work request
+Requested: 2026-10-02 or earlier (James); decisions given 2026-10-30
+Type: minor (new feature)        Status: Built in v2.9.0
+Notes / questions: Cloudflare Email Routing and an Email Worker (deploy/inbound-email-worker.js) post each raw message to POST /api/inbound/email with INBOUND_EMAIL_SECRET. Allowed senders: any registered user's email plus alternate sender addresses on My account (for the Telus text gateway). Messages wait in a review queue on Work Requests (not a work request status) so the server never rewrites the saved data; Review opens the normal form filled from the AI draft. No IMAP; no SMS provider. James sets up the Cloudflare side.
+
+### P-3 - Build with AI button to convert a work request to a work order
+Requested: 2026-10-02 or earlier (James)
+Type: minor (new feature)        Status: Built in v2.9.0
+Notes / questions: Convert to work order has a Build with AI button that drafts type, work plan, crew, hours and required-by date from the request; the plan is added to the work order description.
+
 
 ### P-4 - Switch to the standard release flow from the home server app spec
 Requested: 2026-10-22 (James: "Please switch this app to the standard release flow in the home server app spec")

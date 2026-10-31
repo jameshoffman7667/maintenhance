@@ -3,6 +3,8 @@
 > **MaintEnhance** (short form "ME") is the product name used throughout.
 > (Versions before v1.8 were called HomeKeep; see CHANGELOG.md.)
 
+> **Requests by email or text (v2.9):** set `INBOUND_EMAIL_SECRET` (and `INBOUND_EMAIL_ADDRESS` for display) and add the Cloudflare Email Worker in `deploy/inbound-email-worker.js` to turn messages sent to a request address into draft work requests that an Owner, Manager or Planner reviews. Build with AI also accepts lists and files, and Convert to work order has a Build with AI button. See `deploy/RELEASE.md` for the setup steps.
+
 > **Build with AI (v2.7):** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) to use Build with AI and AI link look-ups; the Owner turns Build with AI on or off under Features.
 
 A standalone, single-container build of the MaintEnhance household CMMS: a

@@ -82,7 +82,7 @@ const COOKIE_OPTS = {
 const passwordResetAvailable = () => mailEnabled() && !!(process.env.APP_URL || "").trim();
 // Extra public flags: password reset availability and whether a Gemini key is
 // configured (only yes/no, never the key itself).
-const configExtra = () => ({ passwordResetEmail: passwordResetAvailable(), geminiKeyDetected: prefill.geminiAvailable(), mailConfigured: mailEnabled(), version: require("./changelog").version });
+const configExtra = () => ({ passwordResetEmail: passwordResetAvailable(), geminiKeyDetected: prefill.geminiAvailable(), mailConfigured: mailEnabled(), inboundEmail: require("./inbound").enabled(), inboundAddress: require("./inbound").enabled() ? require("./inbound").address() : "", version: require("./changelog").version });
 app.get("/api/changelog", requireAuth, (req, res) => {
   const cl = require("./changelog");
   res.json({ version: cl.version, entries: cl.entries() });
@@ -200,6 +200,20 @@ app.patch("/api/auth/profile", requireAuth, (req, res) => {
     const problem = emailProblem(email, req.user.id);
     if (problem) return res.status(400).json({ error: problem });
     sets.push("email = ?"); vals.push(email || null);
+  }
+  if (body.altEmails !== undefined) {
+    if (!Array.isArray(body.altEmails)) return res.status(400).json({ error: "Alternate addresses must be a list" });
+    const list = [...new Set(body.altEmails.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean))];
+    if (list.length > 5) return res.status(400).json({ error: "You can add up to 5 alternate sender addresses" });
+    for (const a of list) {
+      if (!EMAIL_RE.test(a) || a.length > 200) return res.status(400).json({ error: `"${a}" doesn't look like a valid email address` });
+      if (db.prepare("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?").get(a, req.user.id)) return res.status(400).json({ error: `${a} is already used by another user` });
+      for (const o of db.prepare("SELECT alt_emails FROM users WHERE id != ? AND alt_emails != '[]'").all(req.user.id)) {
+        let arr = []; try { arr = JSON.parse(o.alt_emails); } catch (e) { arr = []; }
+        if (arr.map((x) => String(x).toLowerCase()).includes(a)) return res.status(400).json({ error: `${a} is already used by another user` });
+      }
+    }
+    sets.push("alt_emails = ?"); vals.push(JSON.stringify(list));
   }
   if (body.avatar !== undefined) {
     const a = body.avatar || "";
@@ -340,6 +354,35 @@ app.post("/api/ai/build", requireAuth, async (req, res) => {
   }
 });
 
+// v2.9: several items from a list (text and/or attached files), and re-drafting one
+// item after the person answers its clarifying questions. Draft only; never saves.
+function aiGuard(req, res) {
+  const cfg = settings.current();
+  if (cfg.features.aiBuilder === false) { res.status(404).json({ error: "Build with AI is turned off" }); return false; }
+  if (req.user.role === "Guest") { res.status(403).json({ error: "Guests can't use Build with AI" }); return false; }
+  const key = String(req.user.id);
+  const wait = aiBuildLimiter.check(key);
+  if (wait) { res.status(429).json({ error: `Too many AI requests. Try again in ${Math.ceil(wait / 60)} minute(s).` }); return false; }
+  aiBuildLimiter.fail(key);
+  return true;
+}
+function aiFail(res, e) {
+  if (e && e.userFacing) return res.status(400).json({ error: e.message });
+  console.error("ai build failed:", e && e.message);
+  res.status(502).json({ error: "The AI request didn't work. Try again in a moment." });
+}
+app.post("/api/ai/build-many", requireAuth, async (req, res) => {
+  if (!aiGuard(req, res)) return;
+  const { kind, prompt, context, files } = req.body || {};
+  try { res.json(await require("./aibuild").buildMany(kind, prompt, context, files)); } catch (e) { aiFail(res, e); }
+});
+app.post("/api/ai/refine", requireAuth, async (req, res) => {
+  if (!aiGuard(req, res)) return;
+  const { kind, item, answers, context } = req.body || {};
+  try { res.json(await require("./aibuild").refine(kind, item, answers, context)); } catch (e) { aiFail(res, e); }
+});
+require("./inbound").mount(app);
+
 /* -------------------------------------------------------------
    Household member management. Listing is open to any
    authenticated user (work orders need to offer an Executor
@@ -362,13 +405,14 @@ function applyNotifySchedule(body, sets, vals) {
   if (body.notifyWeekday !== undefined) { const n = Number(body.notifyWeekday); if (!Number.isInteger(n) || n < 0 || n > 6) return "Weekday must be 0–6"; sets.push("notify_weekday = ?"); vals.push(n); }
   return null;
 }
-const USER_COLS = "id, username, role, email, must_change_password, notify_pm_overdue, notify_warranty_expiring, notify_work_request_unreviewed, designations, avatar, notify_alarms, notify_low_stock, notify_my_schedule, notify_team_schedule, notify_app_updates, notify_freq, notify_time, notify_weekday";
+const USER_COLS = "id, username, role, email, alt_emails, must_change_password, notify_pm_overdue, notify_warranty_expiring, notify_work_request_unreviewed, designations, avatar, notify_alarms, notify_low_stock, notify_my_schedule, notify_team_schedule, notify_app_updates, notify_freq, notify_time, notify_weekday";
 function rowToUser(row) {
   return {
     id: row.id,
     username: row.username,
     role: row.role,
     email: row.email || "",
+    altEmails: (() => { try { const a = JSON.parse(row.alt_emails || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } })(),
     mustChangePassword: !!row.must_change_password,
     notifyPmOverdue: !!row.notify_pm_overdue,
     notifyWarrantyExpiring: !!row.notify_warranty_expiring,
@@ -388,7 +432,7 @@ function rowToUser(row) {
 
 app.get("/api/users", requireAuth, (req, res) => {
   const rows = db.prepare(
-    "SELECT id, username, role, email, must_change_password, notify_pm_overdue, notify_warranty_expiring, notify_work_request_unreviewed, designations, avatar, notify_alarms, notify_low_stock, notify_my_schedule, notify_team_schedule, notify_app_updates, notify_freq, notify_time, notify_weekday FROM users ORDER BY created_at"
+    "SELECT id, username, role, email, alt_emails, must_change_password, notify_pm_overdue, notify_warranty_expiring, notify_work_request_unreviewed, designations, avatar, notify_alarms, notify_low_stock, notify_my_schedule, notify_team_schedule, notify_app_updates, notify_freq, notify_time, notify_weekday FROM users ORDER BY created_at"
   ).all();
   res.json(rows.map(rowToUser));
 });

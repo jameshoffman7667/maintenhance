@@ -50,6 +50,9 @@ services:
       # the browser. Blank = the plain page-details fallback is used.
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # Optional (v2.9): email/text intake. See deploy/RELEASE.md. Blank = off.
+      - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
+      - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}
       # Name, logo, colours, location labels and feature toggles are set
       # in the app by the Owner (Owner Tools), not here.
     volumes:

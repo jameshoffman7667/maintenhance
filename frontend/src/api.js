@@ -77,6 +77,10 @@ export const api = {
   getConfig: () => request("/api/config"),
   getChangelog: () => request("/api/changelog"),
   aiBuild: (kind, prompt, context) => request("/api/ai/build", { method: "POST", body: JSON.stringify({ kind, prompt, context }) }),
+  aiBuildMany: (kind, prompt, context, files) => request("/api/ai/build-many", { method: "POST", body: JSON.stringify({ kind, prompt, context, files }) }),
+  aiRefine: (kind, item, answers, context) => request("/api/ai/refine", { method: "POST", body: JSON.stringify({ kind, item, answers, context }) }),
+  getInbound: () => request("/api/inbound"),
+  resolveInbound: (id, status, workRequestId) => request("/api/inbound/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ status, workRequestId }) }),
   // Owner-only settings edits (Owner Tools → Branding & Terminology / Features).
   saveSettings: (settings) => request("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
   prefillFromLink: (url, kind) => request("/api/prefill", { method: "POST", body: JSON.stringify({ url, kind }) }),

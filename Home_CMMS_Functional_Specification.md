@@ -387,6 +387,24 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - It needs no login and returns nothing else: no user, household or configuration data. It checks only the local database (a trivial query) and calls no outside service. If the database check fails it answers HTTP 503 with `{"status":"error","version":"X.Y.Z"}`. Responses are never cached, and the service worker does not handle this path.
 - The Docker image has a matching `HEALTHCHECK` (30 second start period, 30 second interval, 5 second timeout, 3 retries) that requests `http://127.0.0.1:${PORT}/healthz`. `deploy/compose.yaml` carries the same check.
 
+### 3.32 Build with AI from a list (v2.9)
+
+- On the New work order, New work request, Add asset, New vendor and New part screens, Build with AI has a checkbox, "This is a list". With it ticked the person pastes a list and/or attaches up to three files (text, CSV, PDF, or PNG/JPEG/WebP photos, 4 MB each) and the AI returns up to 25 drafts. The server calls are `POST /api/ai/build-many` and `POST /api/ai/refine`; like the single build they only return drafts and never save, and they share the per-person rate limit.
+- The drafts are shown one at a time in an editable form (manual edit mode) with "Work order 2 of 7" progress. For each the person chooses Add (validated with the same required fields as the normal form) or Skip, or stops. Only approved items are saved. A new asset also gets the AI's suggested bill of materials.
+- At the bottom of each item the AI may list up to three questions, multiple choice or free text. Answering and pressing Update draft re-drafts that item (fields the person already edited are kept unless an answer contradicts them) and may leave no further questions.
+- Text, attached files and links are treated as untrusted data and never as instructions.
+
+### 3.33 Work requests by email or text (v2.9)
+
+- A Cloudflare Email Worker (`deploy/inbound-email-worker.js`) forwards each message sent to the request address (for example requests@hoffmanhouse.ca) to `POST /api/inbound/email` as a raw message (`Content-Type: message/rfc822`) with the header `X-Inbound-Secret`. The route exists only when `INBOUND_EMAIL_SECRET` (16 or more characters) is set, otherwise it answers 404; a wrong secret answers 401 and repeated failures are rate limited. `INBOUND_EMAIL_ADDRESS` is shown in the app.
+- Allowed senders are the email address of any registered user plus that user's alternate sender addresses (My account, up to five, each unique across users). The alternate address is how a text forwarded from a phone is accepted, because it arrives from the carrier's gateway address (for example 5195551234@msg.telus.com). Messages from anyone else are dropped without a reply. Limits: 20 messages per person and 100 in total per 24 hours; the same Message-ID is stored once; messages over 10 MB are refused.
+- Accepted messages are parsed on the server. Image attachments (up to five, 8 MB each) are stored as photos; images and PDFs are also shown to the AI. Gemini drafts a work request (title, description, priority, location, asset, required-by date, suggested type) using the saved location and asset names, treating the message as untrusted data. If the AI is off or fails, the message is still queued without a draft.
+- Nothing becomes a work request automatically. Messages wait in a queue (table `inbound_requests`, separate from the saved data so the server never rewrites it). Owners, Managers and Planners see "From email and text" at the top of Work Requests with Review and Dismiss. Review opens the normal new work request form filled from the draft, with the original message and photos shown; submitting records the sender as the requester and marks the message converted. A "Sender not verified" tag shows when the message carried no passing SPF, DKIM or DMARC result. Reviewed messages are removed after 60 days.
+
+### 3.34 Build with AI on Convert to work order (v2.9)
+
+- Convert to work order has a Build with AI button (not for PM Base). It sends the request's text to the AI, which drafts the type (Corrective, PM or Benchmark), a short work plan, the crew size, hours per person and a required-by date. The person reviews the draft; applying fills in the form (it fills only empty crew, hours and date fields) and shows the work plan in an editable box. The plan is added to the new work order's description under "Work plan:".
+
 ## 4. Non-Functional Requirements
 
 | Category | Requirement |

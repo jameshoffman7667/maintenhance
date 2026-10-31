@@ -1150,13 +1150,39 @@ function AiBuildButton({ kind, label, small, ...props }) {
 }
 
 // props: kind, title, hint, context, extra, review(draft)->{fields:[[label,value]]}|{items:[{key,label,detail,depth}],noun}, apply(draft, keys), applyLabel
-function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyLabel, onClose }) {
-  const [prompt, setPrompt] = useState("");
+function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyLabel, onClose, multi, initialPrompt, autoRun }) {
+  const [prompt, setPrompt] = useState(initialPrompt || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState(null);
   const [picked, setPicked] = useState(() => new Set());
+  const [listMode, setListMode] = useState(false);   // v2.9: a list or files -> several items
+  const [files, setFiles] = useState([]);
+  const [manyItems, setManyItems] = useState(null);
+  const canMany = !!multi && aiManyOk(kind);
+  useEffect(() => { if (autoRun && prompt.trim()) run(); }, []); // eslint-disable-line
+  const pickFiles = async (e) => {
+    const chosen = e.target.files; e.target.value = "";
+    if (!chosen || !chosen.length) return;
+    try {
+      const read = await aiReadFiles(chosen);
+      const all = [...files, ...read];
+      if (all.length > 3) { setError("Attach at most 3 files"); return; }
+      setFiles(all); setError("");
+    } catch (err) { setError(err.message); }
+  };
+  const runMany = async () => {
+    setBusy(true); setError("");
+    try {
+      const r = await api.aiBuildMany(kind, prompt, AI_MANY[kind].context(multi.data), files);
+      const items = (r.items || []).filter((x) => x && typeof x === "object");
+      if (!items.length) { setError("The AI didn't find any items. Try a clearer list."); return; }
+      setManyItems(items);
+    } catch (e) { setError(e.message || "Couldn't build the drafts"); }
+    finally { setBusy(false); }
+  };
   const run = async () => {
+    if (canMany && listMode) return runMany();
     setBusy(true); setError("");
     try {
       const r = await api.aiBuild(kind, prompt, typeof context === "function" ? context() : context);
@@ -1171,17 +1197,37 @@ function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyL
   const doApply = () => { apply(draft.raw, picked); onClose(); };
   const small = { fontFamily: FONT_BODY, fontSize: 12, color: C.inkFaint };
   return (
-    <Modal title={title || "Build with AI"} info="aiBuild" onClose={onClose} wide>
-      {!draft && (
+    <Modal title={manyItems ? `${title || "Build with AI"}: review the list` : (title || "Build with AI")} info="aiBuild" onClose={onClose} wide>
+      {manyItems && <AiMultiReview kind={kind} items={manyItems} data={multi.data} update={multi.update} currentUser={multi.currentUser} onClose={onClose} />}
+      {!draft && !manyItems && (
         <>
           <div style={{ ...small, marginBottom: 8 }}>Describe what you want in your own words. You can paste web links (a product page, a manual, a supplier). The AI makes a draft that you review before anything is saved.</div>
           {extra}
-          <textarea data-ai-prompt autoFocus style={{ ...inputStyle, minHeight: 130 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={hint || "Describe it here…"} />
+          <textarea data-ai-prompt autoFocus style={{ ...inputStyle, minHeight: 130 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={listMode ? "Paste your list here, one entry per line or in any format…" : (hint || "Describe it here…")} />
+          {canMany && (
+            <div style={{ marginTop: 8 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink, cursor: "pointer" }}>
+                <input type="checkbox" data-ai-list checked={listMode} onChange={(e) => setListMode(e.target.checked)} /> This is a list: create several {AI_MANY[kind].noun}s, reviewed one at a time
+              </label>
+              {listMode && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ cursor: "pointer" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, border: `1px solid ${C.line}`, borderRadius: 4, padding: "5px 10px", fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink }}><Upload size={13} /> Attach files</span>
+                      <input data-ai-files type="file" multiple accept=".txt,.csv,.md,.pdf,.png,.jpg,.jpeg,.webp" style={{ display: "none" }} onChange={pickFiles} />
+                    </label>
+                    {files.map((f, i) => <span key={i} style={{ fontFamily: FONT_BODY, fontSize: 12, color: C.inkSoft, border: `1px solid ${C.lineSoft}`, borderRadius: 10, padding: "2px 8px" }}>{f.name} <a onClick={() => setFiles(files.filter((_, j) => j !== i))} style={{ cursor: "pointer", color: C.rust }} title="Remove">×</a></span>)}
+                  </div>
+                  <div style={{ ...small, marginTop: 4 }}>Text, CSV, PDF or photos of a list; up to 3 files, 4 MB each, up to 25 items. The AI may ask short follow-up questions on each item.</div>
+                </div>
+              )}
+            </div>
+          )}
           {error && <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.rust, marginTop: 8 }}>{error}</div>}
           <div style={{ ...small, marginTop: 8 }}>Your text, any links and the names of your locations and assets are sent to Google's Gemini service. Please check the draft; AI can be wrong.</div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
             <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-            <Btn variant="primary" onClick={run} disabled={busy || !prompt.trim()}>{busy ? <><Loader2 size={14} className="animate-spin" /> Building…</> : <><Wand2 size={14} /> Build draft</>}</Btn>
+            <Btn variant="primary" onClick={run} disabled={busy || (!prompt.trim() && !(listMode && files.length))}>{busy ? <><Loader2 size={14} className="animate-spin" /> Building…</> : <><Wand2 size={14} /> {listMode ? "Build drafts" : "Build draft"}</>}</Btn>
           </div>
         </>
       )}
@@ -1211,6 +1257,231 @@ function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyL
         </>
       )}
     </Modal>
+  );
+}
+
+/* ---- v2.9: several items from a list, reviewed one at a time ----
+   The person pastes a list and/or attaches files; the AI returns one draft per entry. Each draft is
+   shown in an editable form (manual edit mode) with the AI's own clarifying questions at the bottom.
+   Nothing is saved until the person approves that item. */
+const AI_FILE_TYPES = { txt: "text/plain", csv: "text/csv", md: "text/markdown", pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+const aiLocOptions = (data) => flattenTree(data.locations, "parentId", null).map(({ item, depth }) => [item.id, "—".repeat(depth) + " " + item.name]);
+const aiAssetOptions = (data) => [["", "— none —"], ...data.assets.filter((a) => !a.archived).map((a) => [a.id, a.name])];
+const aiFirstLoc = (data, it) => {
+  const as = data.assets.find((x) => x.id === (it && it.assetId));
+  return aiIdOrBlank(data.locations, it && it.locationId) || (as && as.locationId) || (data.locations[0] ? data.locations[0].id : "");
+};
+const AI_MANY = {
+  workRequest: {
+    noun: "work request",
+    title: (f) => f.title,
+    context: (data) => aiLocCtx(data) + "\n" + aiAssetCtx(data),
+    norm: (it, data) => ({ title: aiStr(it.title, 160), description: aiStr(it.description, 1200), priority: aiPick(it.priority, PRIORITIES, "Medium"), requiredByDate: aiDate(it.requiredByDate), locationId: aiFirstLoc(data, it), assetId: aiIdOrBlank(data.assets, it.assetId), suggestedType: aiPick(it.suggestedType, ["Corrective", "PM", "Benchmark"], "Corrective") }),
+    fields: (data) => [
+      { k: "title", label: "Title", type: "text" }, { k: "description", label: "Description", type: "textarea" },
+      { k: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => [p, p]) }, { k: "requiredByDate", label: "Required by", type: "date" },
+      { k: "locationId", label: "Location", type: "select", options: aiLocOptions(data) }, { k: "assetId", label: "Asset (optional)", type: "select", options: aiAssetOptions(data) },
+      { k: "suggestedType", label: "Suggested work order type", type: "select", options: [["Corrective", "Corrective"], ["PM", "PM"], ["Benchmark", "Benchmark"]] },
+    ],
+    problem: (f) => { const m = []; if (!f.title.trim()) m.push("title"); if (!f.description.trim()) m.push("description"); if (!f.requiredByDate) m.push("required-by date"); if (!f.locationId) m.push("location"); return m.length ? `Please fill in: ${m.join(", ")}.` : ""; },
+    create: (d, f, user) => {
+      d.counters = d.counters || { wo: 0, wr: 0, part: 0 }; d.counters.wr += 1;
+      d.workRequests.push({ id: uid("wr"), number: d.counters.wr, title: f.title.trim(), description: f.description, assetId: f.assetId || null, bomNodeId: null, locationId: f.locationId, priority: f.priority, requiredByDate: f.requiredByDate, suggestedType: f.suggestedType, suggestedParts: [], photos: [], requestedBy: user, dateSubmitted: todayISO(), status: "Submitted", reviewNote: "", workOrderId: null, createdBy: user });
+    },
+  },
+  workOrder: {
+    noun: "work order",
+    title: (f) => f.title,
+    context: (data) => aiLocCtx(data) + "\n" + aiAssetCtx(data),
+    norm: (it, data) => ({ title: aiStr(it.title, 160), description: aiStr(it.description, 1500), type: aiPick(it.type, ["Corrective", "Unplanned", "Benchmark", "PM"], "Corrective"), priority: aiPick(it.priority, PRIORITIES, "Medium"), requiredByDate: aiDate(it.requiredByDate), locationId: aiFirstLoc(data, it), assetId: aiIdOrBlank(data.assets, it.assetId), estHours: aiNum(it.estHours) ? String(aiNum(it.estHours)) : "", crewRequired: aiNum(it.crewRequired) ? String(Math.round(aiNum(it.crewRequired))) : "", failureCode: aiPick(it.failureCode, FAILURE_CODES, ""), rootCause: aiStr(it.rootCause, 300) }),
+    fields: (data) => [
+      { k: "title", label: "Title", type: "text" }, { k: "description", label: "Description", type: "textarea" },
+      { k: "type", label: "Type", type: "select", options: ["Corrective", "Unplanned", "Benchmark", "PM"].map((p) => [p, p]) }, { k: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => [p, p]) },
+      { k: "requiredByDate", label: "Required by", type: "date" }, { k: "locationId", label: "Location", type: "select", options: aiLocOptions(data) },
+      { k: "assetId", label: "Asset (optional)", type: "select", options: aiAssetOptions(data) },
+      ...(execOn() ? [{ k: "crewRequired", label: "Executors required", type: "number" }, { k: "estHours", label: "Hours per executor", type: "number" }] : []),
+      { k: "failureCode", label: "Failure code (optional)", type: "select", options: [["", "— none —"], ...FAILURE_CODES.map((p) => [p, p])] },
+    ],
+    problem: (f) => { const m = []; if (!f.title.trim()) m.push("title"); if (!f.description.trim()) m.push("description"); if (!f.requiredByDate) m.push("required-by date"); if (!f.locationId) m.push("location"); if (execOn() && !(Number(f.crewRequired) >= 1)) m.push("executors required"); if (execOn() && !(Number(f.estHours) > 0)) m.push("hours per executor"); return m.length ? `Please fill in: ${m.join(", ")}.` : ""; },
+    create: (d, f, user) => {
+      d.counters = d.counters || { wo: 0, wr: 0, part: 0 }; d.counters.wo += 1;
+      const corr = f.type === "Corrective" || f.type === "Unplanned";
+      d.workOrders.push({
+        id: uid("wo"), number: d.counters.wo, title: f.title.trim(), type: f.type, status: "Active",
+        assetId: f.assetId || null, bomNodeId: null, locationId: f.locationId, description: f.description, sourceRequestId: null, sourceBenchmarkId: null, sourcePmBaseId: null, sourceFixedDate: null,
+        priority: f.priority, executorId: "", executorIds: [], estHours: f.estHours || "", crewRequired: f.crewRequired || "", scheduledDate: "", requiredByDate: f.requiredByDate || "",
+        completedDate: null, verifiedDate: null, createdDate: todayISO(), cost: "", vendorId: null, notes: "",
+        failureCode: corr ? (f.failureCode || "") : "", rootCause: corr ? (f.rootCause || "") : "", parts: [], comments: [], partsDeducted: false, createdBy: user,
+      });
+    },
+  },
+  asset: {
+    noun: "asset",
+    title: (f) => f.name,
+    context: (data) => aiLocCtx(data),
+    norm: (it, data) => ({ name: aiStr(it.name, 160), category: aiStr(it.category, 60), locationId: aiFirstLoc(data, it), manufacturer: aiStr(it.manufacturer, 80), model: aiStr(it.model, 80), serial: aiStr(it.serial, 80), manualUrl: aiStr(it.manualUrl, 300), isMajor: !!it.isMajor, notes: aiStr(it.notes, 600) }),
+    fields: (data) => [
+      { k: "name", label: "Name", type: "text" }, { k: "category", label: "Category", type: "text" }, { k: "locationId", label: "Location", type: "select", options: aiLocOptions(data) },
+      { k: "manufacturer", label: "Manufacturer", type: "text" }, { k: "model", label: "Model", type: "text" }, { k: "serial", label: "Serial number", type: "text" },
+      { k: "manualUrl", label: "Manual link", type: "text" }, { k: "isMajor", label: "Major asset", type: "checkbox" }, { k: "notes", label: "Notes", type: "textarea" },
+    ],
+    problem: (f) => (f.name.trim() ? "" : "Please fill in: name."),
+    note: (raw) => { const n = aiNodes({ nodes: raw && raw.bom }, 60).length; return n ? `${n} bill of materials entries suggested by the AI will be added with this asset.` : ""; },
+    create: (d, f, user, raw) => {
+      const id = uid("a");
+      d.assets.push({ id, ...f, name: f.name.trim(), purchaseDate: "", warrantyEnd: "", meterUnit: "", currentMeterValue: "", meterUpdatedDate: "", createdBy: null });
+      const bom = { nodes: raw && raw.bom }; const all = new Set(aiNodes(bom, 60).map((n) => n.i));
+      if (all.size) aiMakeBom(bom, all, id).forEach((n) => d.bomNodes.push(n));
+    },
+  },
+  vendor: {
+    noun: "vendor",
+    title: (f) => f.name,
+    context: () => "",
+    norm: (it) => ({ name: aiStr(it.name, 160), specialty: aiStr(it.specialty, 120), contact: aiStr(it.contact, 300), link: aiStr(it.link, 300), notes: aiStr(it.notes, 600) }),
+    fields: () => [{ k: "name", label: "Name", type: "text" }, { k: "specialty", label: "Specialty", type: "text" }, { k: "contact", label: "Contact", type: "textarea" }, { k: "link", label: "Web link", type: "text" }, { k: "notes", label: "Notes", type: "textarea" }],
+    problem: (f) => (f.name.trim() ? "" : "Please fill in: name."),
+    create: (d, f, user) => { d.vendors.push({ id: uid("v"), ...f, name: f.name.trim(), createdBy: user }); },
+  },
+  part: {
+    noun: "part",
+    title: (f) => f.name,
+    context: () => "",
+    norm: (it) => ({ name: aiStr(it.name, 160), description: aiStr(it.description, 400), manufacturer: aiStr(it.manufacturer, 80), manufacturerPartNumber: aiStr(it.manufacturerPartNumber, 80), cost: aiNum(it.cost) ? String(aiNum(it.cost)) : "", link: aiStr(it.link, 300), qty: "1", reorderAt: "1" }),
+    fields: () => [
+      { k: "name", label: "Name", type: "text" }, { k: "description", label: "Description", type: "textarea" }, { k: "manufacturer", label: "Manufacturer", type: "text" },
+      { k: "manufacturerPartNumber", label: "Manufacturer part #", type: "text" }, { k: "cost", label: "Cost ($)", type: "text" }, { k: "link", label: "Web link", type: "text" },
+      { k: "qty", label: "Quantity on hand", type: "number" }, { k: "reorderAt", label: "Reorder at", type: "number" },
+    ],
+    problem: (f) => (f.name.trim() ? "" : "Please fill in: name."),
+    create: (d, f, user) => {
+      d.counters = d.counters || { wo: 0, wr: 0, part: 0 }; d.counters.part = (d.counters.part || 0) + 1;
+      d.inventory.push({ id: uid("inv"), partNumber: d.counters.part, ...f, vendorId: "", assetId: null, bomNodeId: null, name: f.name.trim(), qty: Number(f.qty) || 0, reorderAt: Number(f.reorderAt) || 0, createdBy: user });
+    },
+  },
+};
+const aiManyOk = (kind) => !!AI_MANY[kind];
+
+// Reads chosen files for the server (base64). Types and sizes are checked here and again on the server.
+async function aiReadFiles(fileList) {
+  const out = [];
+  for (const f of Array.from(fileList || [])) {
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    const mime = AI_FILE_TYPES[ext] || (Object.values(AI_FILE_TYPES).includes(f.type) ? f.type : "");
+    if (!mime) throw new Error(`${f.name}: attach text, CSV, PDF or image (PNG, JPEG, WebP) files`);
+    if (f.size > 4 * 1024 * 1024) throw new Error(`${f.name} is larger than 4 MB`);
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("Couldn't read " + f.name)); r.readAsDataURL(f); });
+    out.push({ name: f.name, mime, data });
+  }
+  return out;
+}
+
+function AiMultiReview({ kind, items, data, update, currentUser, onClose }) {
+  const spec = AI_MANY[kind];
+  const [raw, setRaw] = useState(items);
+  const [fields, setFields] = useState(() => items.map((it) => spec.norm(it, data)));
+  const [qs, setQs] = useState(() => items.map((it) => it.clarifications || []));
+  const [answers, setAnswers] = useState(() => items.map(() => ({})));
+  const [state, setState] = useState(() => items.map(() => "pending"));
+  const [idx, setIdx] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const n = items.length;
+  const done = idx >= n;
+  const created = state.filter((s) => s === "created").length;
+  const skipped = state.filter((s) => s === "skipped").length;
+  const small = { fontFamily: FONT_BODY, fontSize: 12, color: C.inkFaint };
+  const setF = (k, v) => setFields((a) => a.map((f, i) => (i === idx ? { ...f, [k]: v } : f)));
+  const setAns = (id, v) => setAnswers((a) => a.map((m, i) => (i === idx ? { ...m, [id]: v } : m)));
+  const advance = (s) => { setState((a) => a.map((x, i) => (i === idx ? s : x))); setError(""); setIdx((i) => i + 1); };
+  const approve = () => {
+    const f = fields[idx]; const problem = spec.problem(f, data);
+    if (problem) { setError(problem); return; }
+    update((d) => { spec.create(d, f, currentUser, raw[idx]); return d; });
+    advance("created");
+  };
+  const asked = (qs[idx] || []).filter((q) => (answers[idx][q.id] || "").trim());
+  const refine = async () => {
+    setBusy(true); setError("");
+    try {
+      const r = await api.aiRefine(kind, { ...fields[idx], bom: raw[idx] && raw[idx].bom }, asked.map((q) => ({ question: q.question, answer: answers[idx][q.id] })), spec.context(data));
+      const next = spec.norm(r.item || {}, data);
+      setFields((a) => a.map((f, i) => (i === idx ? Object.fromEntries(Object.keys(next).map((k) => [k, next[k] === "" || next[k] == null ? f[k] : next[k]])) : f)));
+      setRaw((a) => a.map((x, i) => (i === idx ? { ...x, ...(r.item || {}) } : x)));
+      setQs((a) => a.map((x, i) => (i === idx ? (r.item && r.item.clarifications) || [] : x)));
+      setAnswers((a) => a.map((m, i) => (i === idx ? {} : m)));
+    } catch (e) { setError(e.message || "Couldn't update the draft"); }
+    finally { setBusy(false); }
+  };
+  if (done) {
+    return (
+      <div data-ai-multi-done>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 14, color: C.ink, margin: "6px 0 12px" }}>Finished. Added {created} {spec.noun}{created === 1 ? "" : "s"}{skipped ? `, skipped ${skipped}` : ""}.</div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}><Btn variant="primary" onClick={onClose}>Close</Btn></div>
+      </div>
+    );
+  }
+  const f = fields[idx];
+  const list = spec.fields(data);
+  const note = spec.note ? spec.note(raw[idx]) : "";
+  return (
+    <div data-ai-multi>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <div style={{ fontFamily: FONT_HEAD, fontSize: 14, fontWeight: 600, color: C.ink }}>{spec.noun[0].toUpperCase() + spec.noun.slice(1)} {idx + 1} of {n}</div>
+        <div style={small}>Added {created} · skipped {skipped}. Edit anything, then approve or skip. Nothing is saved until you approve.</div>
+      </div>
+      <div style={{ height: 4, background: C.lineSoft, borderRadius: 2, marginBottom: 10 }}><div style={{ height: 4, width: `${Math.round((idx / n) * 100)}%`, background: C.accent, borderRadius: 2 }} /></div>
+      <div style={{ maxHeight: "52vh", overflowY: "auto", paddingRight: 4 }}>
+        <div className="hk-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {list.map((fd) => {
+            const wide = fd.type === "textarea" || fd.k === "title" || fd.k === "name";
+            return (
+              <div key={fd.k} style={wide ? { gridColumn: "1 / -1" } : undefined}>
+                {fd.type === "checkbox" ? (
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontFamily: FONT_BODY, fontSize: 13, color: C.ink, margin: "6px 0 12px" }}><input type="checkbox" checked={!!f[fd.k]} onChange={(e) => setF(fd.k, e.target.checked)} /> {fd.label}</label>
+                ) : (
+                  <Field label={fd.label}>
+                    {fd.type === "textarea" ? <textarea style={{ ...inputStyle, minHeight: 64 }} value={f[fd.k] || ""} onChange={(e) => setF(fd.k, e.target.value)} />
+                      : fd.type === "select" ? <select style={inputStyle} value={f[fd.k] || ""} onChange={(e) => setF(fd.k, e.target.value)}>{fd.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                      : <input type={fd.type === "date" ? "date" : fd.type === "number" ? "number" : "text"} style={inputStyle} value={f[fd.k] || ""} onChange={(e) => setF(fd.k, e.target.value)} />}
+                  </Field>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {note && <div style={{ ...small, marginBottom: 8 }}>{note}</div>}
+        {(qs[idx] || []).length > 0 && (
+          <div data-ai-questions style={{ borderTop: `1px solid ${C.line}`, marginTop: 8, paddingTop: 10 }}>
+            <div style={{ fontFamily: FONT_HEAD, fontSize: 13, fontWeight: 600, color: C.ink, marginBottom: 2 }}>Questions from the AI</div>
+            <div style={{ ...small, marginBottom: 8 }}>Optional. Answer what you can, then press Update draft to refine this item.</div>
+            {qs[idx].map((q) => (
+              <div key={q.id} style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: C.ink, marginBottom: 4 }}>{q.question}</div>
+                {q.type === "choice" ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {q.options.map((o) => (
+                      <label key={o} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink, border: `1px solid ${answers[idx][q.id] === o ? C.accent : C.line}`, borderRadius: 4, padding: "4px 9px", cursor: "pointer" }}>
+                        <input type="radio" name={`q-${idx}-${q.id}`} checked={answers[idx][q.id] === o} onChange={() => setAns(q.id, o)} /> {o}
+                      </label>
+                    ))}
+                  </div>
+                ) : <input style={inputStyle} value={answers[idx][q.id] || ""} onChange={(e) => setAns(q.id, e.target.value)} placeholder="Your answer" />}
+              </div>
+            ))}
+            <Btn small variant="ghost" onClick={refine} disabled={busy || !asked.length}>{busy ? <><Loader2 size={13} className="animate-spin" /> Updating…</> : <><Wand2 size={13} /> Update draft with my answers</>}</Btn>
+          </div>
+        )}
+      </div>
+      {error && <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.rust, marginTop: 8 }}>{error}</div>}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+        <Btn variant="ghost" onClick={onClose}>Stop here</Btn>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" onClick={() => advance("skipped")} disabled={busy}>Skip</Btn>
+          <Btn variant="primary" onClick={approve} disabled={busy}><Check size={14} /> Add {spec.noun} {idx + 1 < n ? "and next" : "and finish"}</Btn>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2680,7 +2951,7 @@ function AssetsView({ data, update, role, goToOrder, deepLinkAssetId, onConsumeD
           {canWrite(role) && <PrefillBar p={pre} form={form} />}
           {canWrite(role) && (
             <div style={{ marginBottom: 10 }}>
-              <AiBuildButton kind="asset" title="Build an Asset with AI" hint="e.g. Carrier 3-ton heat pump with a gas furnace in the basement mechanical room, installed 2019. Give me a bill of materials."
+              <AiBuildButton kind="asset" multi={{ data, update, currentUser: "" }} title="Build an Asset with AI" hint="e.g. Carrier 3-ton heat pump with a gas furnace in the basement mechanical room, installed 2019. Give me a bill of materials."
                 context={() => aiLocCtx(data)}
                 review={(d) => ({
                   fields: [["Name", aiStr(d.name, 160)], ["Category", aiStr(d.category, 60)], ["Manufacturer", aiStr(d.manufacturer, 80)], ["Model", aiStr(d.model, 80)], ["Serial", aiStr(d.serial, 80)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Major asset", d.isMajor ? "Yes" : ""], ["Notes", aiStr(d.notes, 500)]].filter(([, v]) => v),
@@ -2817,7 +3088,7 @@ function PartEditModal({ data, update, part, currentUser, role, onClose, onSaved
     <Modal title={part ? `Edit ${formatPartNum(part.partNumber)}` : "New part"} info="part" onClose={() => closeGuard(isDirty, save, onClose)} wide>
       <PrefillBar p={pre} form={form} />
       <div style={{ marginBottom: 10 }}>
-        <AiBuildButton kind="part" title="Build a Part with AI" hint="e.g. Replacement 16x25x1 MERV 11 furnace filter, 12 pack, from a supplier link."
+        <AiBuildButton kind="part" multi={{ data, update, currentUser }} title="Build a Part with AI" hint="e.g. Replacement 16x25x1 MERV 11 furnace filter, 12 pack, from a supplier link."
           review={(d) => ({ fields: [["Name", aiStr(d.name, 160)], ["Description", aiStr(d.description, 400)], ["Manufacturer", aiStr(d.manufacturer, 80)], ["Part number", aiStr(d.manufacturerPartNumber, 80)], ["Cost", aiNum(d.cost) ? aiNum(d.cost) : ""], ["Link", aiStr(d.link, 300)]].filter(([, x]) => x) })}
           apply={(d) => { const set = {}; for (const [k, n] of [["name", 160], ["description", 400], ["manufacturer", 80], ["manufacturerPartNumber", 80], ["link", 300]]) if (aiStr(d[k], n)) set[k] = aiStr(d[k], n); if (aiNum(d.cost)) set.cost = String(aiNum(d.cost)); setForm((f) => ({ ...f, ...set })); }} />
       </div>
@@ -3226,6 +3497,14 @@ function StandbyFields({ form, setForm }) {
   );
 }
 
+// v2.9: the text the AI gets when turning a work request into a work order.
+function wrToWoPrompt(data, wr) {
+  const asset = data.assets.find((a) => a.id === wr.assetId);
+  return "Turn this work request into a work order. Set the type, a short practical work plan (steps and safety notes) as the description, the number of people and hours per person, and a required-by date if one can be worked out.\n\n" +
+    `REQUEST TITLE: ${wr.title}\nDESCRIPTION: ${wr.description || ""}\nPRIORITY: ${wr.priority || ""}\nLOCATION: ${locationPath(data.locations, wr.locationId)}\n` +
+    (asset ? `ASSET: ${asset.name}${asset.manufacturer ? " (" + asset.manufacturer + (asset.model ? " " + asset.model : "") + ")" : ""}\n` : "") +
+    `SUGGESTED TYPE: ${wr.suggestedType || ""}\nREQUIRED BY: ${wr.requiredByDate || ""}`;
+}
 function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingFilter, consumeFilter, isOnline, queueWorkRequest }) {
   const dialog = useDialog();
   const closeGuard = useCloseGuard(dialog);
@@ -3239,16 +3518,44 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
   const initial = useRef(null);
   const [reviewForm, setReviewForm] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [inbox, setInbox] = useState([]);          // v2.9: messages emailed or texted in, waiting for review
+  const inboundRef = useRef(null);
+  const loadInbox = () => { if (SETTINGS.inboundEmail && planRole(role)) api.getInbound().then((r) => setInbox(Array.isArray(r) ? r : [])).catch(() => {}); };
 
   useEffect(() => { if (pendingFilter) consumeFilter(); }, []); // eslint-disable-line
+  useEffect(() => { loadInbox(); }, []); // eslint-disable-line
 
   const isFormOpen = modal === "new" || (modal && modal.action === "editRequest");
   const isDirty = isFormOpen && JSON.stringify(form) !== initial.current;
 
   const openNew = () => {
+    inboundRef.current = null;
     const f = { ...blank, locationId: data.locations[0]?.id || "" };
     setForm(f); initial.current = JSON.stringify(f);
     setModal("new");
+  };
+  // v2.9: review a message that came in by email or text. The AI's draft fills the normal form.
+  const openFromInbound = (m) => {
+    const dr = m.draft || {};
+    const asset = data.assets.find((a) => a.id === dr.assetId);
+    const f = {
+      ...blank,
+      title: aiStr(dr.title, 160) || m.subject || `Request from ${m.requestedBy}`,
+      description: aiStr(dr.description, 1200) || (m.body || "").slice(0, 1200),
+      priority: aiPick(dr.priority, PRIORITIES, ""),
+      requiredByDate: aiDate(dr.requiredByDate),
+      locationId: aiIdOrBlank(data.locations, dr.locationId) || (asset && asset.locationId) || data.locations[0]?.id || "",
+      assetId: asset ? asset.id : null,
+      suggestedType: aiPick(dr.suggestedType, ["Corrective", "PM", "Benchmark"], "Corrective"),
+    };
+    inboundRef.current = m;
+    setForm(f); initial.current = JSON.stringify({ ...f, title: "" });
+    setModal("new");
+  };
+  const dismissInbound = async (m) => {
+    if (!(await dialog.confirm("Dismiss this message without creating a work request?"))) return;
+    try { await api.resolveInbound(m.id, "dismissed"); } catch (e) { await dialog.alertMsg(e.message || "Couldn't dismiss it"); }
+    loadInbox();
   };
   const openEditRequest = (wr) => {
     const f = { title: wr.title, description: wr.description, assetId: wr.assetId, bomNodeId: wr.bomNodeId, locationId: wr.locationId, priority: wr.priority, requiredByDate: wr.requiredByDate || "", suggestedType: wr.suggestedType || "Corrective", suggestedParts: wr.suggestedParts || [] };
@@ -3279,18 +3586,21 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
     }
     setSubmitting(true);
     try {
-      const photoIds = [];
+      const inb = inboundRef.current;
+      const photoIds = inb ? [...(inb.photoIds || [])] : [];
       for (const file of photoFiles) photoIds.push((await api.uploadAttachment(file)).id);
+      const newId = uid("wr");
       update((d) => {
         d.counters = d.counters || { wo: 0, wr: 0, part: 0 };
         d.counters.wr += 1;
         d.workRequests.push({
-          id: uid("wr"), number: d.counters.wr, ...fields, title: fields.title.trim(), photos: photoIds,
-          requestedBy: currentUser, dateSubmitted: todayISO(),
+          id: newId, number: d.counters.wr, ...fields, title: fields.title.trim(), photos: photoIds,
+          requestedBy: (inb && inb.requestedBy) || currentUser, dateSubmitted: todayISO(),
           status: "Submitted", reviewNote: "", workOrderId: null, createdBy: currentUser,
         });
         return d;
       });
+      if (inb) { inboundRef.current = null; api.resolveInbound(inb.id, "converted", newId).then(loadInbox).catch(() => {}); }
       setModal(null);
     } catch (e) {
       // Network blip that navigator.onLine didn't catch — fall back to the
@@ -3375,7 +3685,7 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
         d.workOrders.push({
           id: woId, number: d.counters.wo, title: wr.title, type: reviewForm.type, status: reviewForm.scheduledDate ? "Scheduled" : "Active",
           assetId: wr.assetId, bomNodeId: wr.bomNodeId, locationId: wr.locationId,
-          description: wr.description, sourceRequestId: wr.id, sourceBenchmarkId: null,
+          description: wr.description + (reviewForm.aiDescription && reviewForm.aiDescription.trim() ? "\n\nWork plan:\n" + reviewForm.aiDescription.trim() : ""), sourceRequestId: wr.id, sourceBenchmarkId: null,
           sourcePmBaseId: null, sourceFixedDate: null, priority: wr.priority || "Medium", executorId: "", executorIds: [], estHours: reviewForm.estHours || "", crewRequired: reviewForm.crewRequired || "",
           scheduledDate: reviewForm.scheduledDate, requiredByDate: reviewForm.requiredByDate || wr.requiredByDate || "",
           completedDate: null, verifiedDate: null, createdDate: todayISO(), cost: "", vendorId: null,
@@ -3437,6 +3747,30 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
         info={PAGE_INFO.requests}
         action={canWrite(role) && <Btn variant="primary" onClick={openNew}><Plus size={15} /> Submit request</Btn>}
       />
+      {inbox.length > 0 && (
+        <Panel style={{ marginBottom: 14 }}>
+          <div data-inbox style={{ padding: "10px 18px" }}>
+            <div style={{ fontFamily: FONT_HEAD, fontSize: 14, fontWeight: 600, color: C.ink }}>From email and text ({inbox.length})</div>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 12, color: C.inkFaint, marginBottom: 4 }}>Messages sent to {SETTINGS.inboundAddress || "the request address"}. Review each one; nothing becomes a work request until you submit it.</div>
+          </div>
+          {inbox.map((m) => (
+            <div key={m.id} data-inbox-item style={{ padding: "10px 18px", borderTop: `1px solid ${C.lineSoft}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{(m.draft && m.draft.title) || m.subject || "(no subject)"}</div>
+                  <div style={{ fontFamily: FONT_BODY, fontSize: 12, color: C.inkFaint, marginTop: 2 }}>From {m.requestedBy || m.sender} ({m.sender}) · {fmtDate(m.receivedAt.slice(0, 10))}{!m.draft && " · no AI draft"}{(m.photoIds || []).length > 0 && ` · ${(m.photoIds || []).length} photo${m.photoIds.length === 1 ? "" : "s"}`}</div>
+                </div>
+                {!m.verified && <Tag text="Sender not verified" color={C.gold} soft={C.panelAlt} />}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.inkSoft, marginTop: 6, whiteSpace: "pre-wrap", maxHeight: 64, overflow: "hidden" }}>{(m.body || "").slice(0, 300)}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <Btn small variant="primary" onClick={() => openFromInbound(m)}><Pencil size={12} /> Review</Btn>
+                <Btn small variant="ghost" onClick={() => dismissInbound(m)}>Dismiss</Btn>
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
       <div className="hk-grid-fixed2" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16 }}>
         <LocationNavTree data={data} selectedId={locFilter} onSelect={setLocFilter} />
         <div>
@@ -3503,9 +3837,16 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
 
       {isFormOpen && (
         <Modal title={modal === "new" ? "Submit a work request" : "Edit work request"} info="wrForm" onClose={() => closeGuard(isDirty, modal === "new" ? submitRequest : saveEditRequest, () => setModal(null))} wide>
+          {modal === "new" && inboundRef.current && (
+            <div data-inbound-original style={{ border: `1px solid ${C.line}`, borderRadius: 4, background: C.panelAlt, padding: "8px 10px", marginBottom: 10 }}>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.inkFaint, marginBottom: 4 }}>Original message from {inboundRef.current.requestedBy || inboundRef.current.sender}{inboundRef.current.subject ? ` · ${inboundRef.current.subject}` : ""}. The AI drafted the fields below; check them before submitting.</div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink, whiteSpace: "pre-wrap", maxHeight: 110, overflowY: "auto" }}>{inboundRef.current.body}</div>
+              <AttachmentThumbs ids={inboundRef.current.photoIds} />
+            </div>
+          )}
           {modal === "new" && (
             <div style={{ marginBottom: 10 }}>
-              <AiBuildButton kind="workRequest" title="Build a Work Request with AI" hint="e.g. The kitchen tap has been dripping for a week and the cabinet underneath is damp. Fairly urgent."
+              <AiBuildButton kind="workRequest" multi={{ data, update, currentUser }} title="Build a Work Request with AI" hint="e.g. The kitchen tap has been dripping for a week and the cabinet underneath is damp. Fairly urgent."
                 context={() => aiLocCtx(data) + "\n" + aiAssetCtx(data)}
                 review={(d) => ({ fields: [["Title", aiStr(d.title, 160)], ["Description", aiStr(d.description, 1200)], ["Priority", aiPick(d.priority, PRIORITIES)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Asset", (data.assets.find((x) => x.id === d.assetId) || {}).name || ""], ["Required by", aiDate(d.requiredByDate)], ["Suggested type", aiPick(d.suggestedType, ["Corrective", "PM", "Benchmark"])]].filter(([, v]) => v) })}
                 apply={(d) => {
@@ -3574,6 +3915,23 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
 
       {modal && modal.action === "convert" && (
         <Modal title="Convert to work order" info="convert" onClose={() => setModal(null)} wide>
+          {reviewForm.type !== "PM Base" && (
+            <div style={{ marginBottom: 10 }}>
+              <AiBuildButton kind="workOrder" label="Build with AI" title="Build the work order with AI" autoRun
+                initialPrompt={wrToWoPrompt(data, modal.wr)}
+                review={(d) => ({ fields: [["Type", aiPick(d.type, ["Corrective", "PM", "Benchmark"])], ["Work plan", aiStr(d.description, 1500)], ["Required by", aiDate(d.requiredByDate)], ["Executors required", aiNum(d.crewRequired) ? Math.round(aiNum(d.crewRequired)) : ""], ["Hours per executor", aiNum(d.estHours) || ""]].filter(([, v]) => v) })}
+                apply={(d) => setReviewForm((f) => {
+                  const set = {};
+                  const t = aiPick(d.type, ["Corrective", "PM", "Benchmark"]); if (t) set.type = t;
+                  if (aiStr(d.description, 1500)) set.aiDescription = aiStr(d.description, 1500);
+                  if (aiDate(d.requiredByDate) && !f.requiredByDate) set.requiredByDate = aiDate(d.requiredByDate);
+                  if (aiNum(d.crewRequired) >= 1 && !f.crewRequired) set.crewRequired = String(Math.round(aiNum(d.crewRequired)));
+                  if (aiNum(d.estHours) > 0 && !f.estHours) set.estHours = String(aiNum(d.estHours));
+                  return { ...f, ...set };
+                })} />
+              <span style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.inkFaint, marginLeft: 8 }}>Drafts the type, work plan, crew and hours from this request. You review it before anything is created.</span>
+            </div>
+          )}
           <Field label="Work order type">
             <select style={inputStyle} value={reviewForm.type} onChange={(e) => setReviewForm({ ...reviewForm, type: e.target.value })}>
               <option value="PM">PM</option>
@@ -3593,6 +3951,11 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
               <Field label="Scheduled date (optional)"><input type="date" style={inputStyle} value={reviewForm.scheduledDate} onChange={(e) => setReviewForm({ ...reviewForm, scheduledDate: e.target.value })} /></Field>
               <Field label="Required by" required><input type="date" style={inputStyle} value={reviewForm.requiredByDate} onChange={(e) => setReviewForm({ ...reviewForm, requiredByDate: e.target.value })} /></Field>
             </div>
+          )}
+          {reviewForm.type !== "PM Base" && reviewForm.aiDescription !== undefined && (
+            <Field label="Work plan from AI (added to the work order description)">
+              <textarea data-ai-plan style={{ ...inputStyle, minHeight: 90 }} value={reviewForm.aiDescription} onChange={(e) => setReviewForm({ ...reviewForm, aiDescription: e.target.value })} />
+            </Field>
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
@@ -4181,7 +4544,7 @@ function WorkOrdersView({ data, update, role, currentUser, currentUserId, openId
       {modal === "new" && (
         <Modal title="New work order" info="newWo" onClose={() => closeGuard(isDirty, createWO, () => setModal(null))} wide>
           <div style={{ marginBottom: 10 }}>
-            <AiBuildButton kind="workOrder" title="Build a Work Order with AI" hint="e.g. Replace the furnace filter and check the condensate drain; it's a 16x25x1 filter. Needed before the end of the month."
+            <AiBuildButton kind="workOrder" multi={{ data, update, currentUser }} title="Build a Work Order with AI" hint="e.g. Replace the furnace filter and check the condensate drain; it's a 16x25x1 filter. Needed before the end of the month."
               context={() => aiLocCtx(data) + "\n" + aiAssetCtx(data)}
               review={(d) => ({ fields: [["Title", aiStr(d.title, 160)], ["Type", aiPick(d.type, ["Corrective", "Unplanned", "Benchmark", "PM"])], ["Priority", aiPick(d.priority, PRIORITIES)], ["Description", aiStr(d.description, 1500)], ["Location", aiIdOrBlank(data.locations, d.locationId) ? locationPath(data.locations, d.locationId) : ""], ["Asset", (data.assets.find((x) => x.id === d.assetId) || {}).name || ""], ["Required by", aiDate(d.requiredByDate)], ["Hours per person", execOn() && aiNum(d.estHours) ? aiNum(d.estHours) : ""], ["People needed", execOn() && aiNum(d.crewRequired) ? aiNum(d.crewRequired) : ""], ["Failure code", aiPick(d.failureCode, FAILURE_CODES)], ["Root cause", aiStr(d.rootCause, 300)]].filter(([, v]) => v) })}
               apply={(d) => {
@@ -4563,7 +4926,7 @@ function VendorsView({ data, update, role, currentUser }) {
           {canWrite(role) && <PrefillBar p={pre} form={form} />}
           {canWrite(role) && (
             <div style={{ marginBottom: 10 }}>
-              <AiBuildButton kind="vendor" title="Build a Vendor with AI" hint="e.g. Our regular plumber, Smith & Sons Plumbing, in Hamilton. Link to their website if you have one."
+              <AiBuildButton kind="vendor" multi={{ data, update, currentUser }} title="Build a Vendor with AI" hint="e.g. Our regular plumber, Smith & Sons Plumbing, in Hamilton. Link to their website if you have one."
                 review={(d) => ({ fields: [["Name", aiStr(d.name, 160)], ["Specialty", aiStr(d.specialty, 120)], ["Contact", aiStr(d.contact, 200)], ["Link", aiStr(d.link, 300)], ["Notes", aiStr(d.notes, 600)]].filter(([, x]) => x) })}
                 apply={(d) => { const set = {}; for (const [k, n] of [["name", 160], ["specialty", 120], ["contact", 200], ["link", 300], ["notes", 600]]) if (aiStr(d[k], n)) set[k] = aiStr(d[k], n); setForm((f) => ({ ...f, ...set })); }} />
             </div>
@@ -8453,6 +8816,8 @@ function MyAccountCard({ user, onUserChanged, theme, setTheme, installPrompt, do
   const dialog = useDialog();
   const [email, setEmail] = useState(user.email || "");
   const [emailMsg, setEmailMsg] = useState("");
+  const [alts, setAlts] = useState((user.altEmails || []).join(", "));
+  const [altMsg, setAltMsg] = useState("");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -8469,6 +8834,12 @@ function MyAccountCard({ user, onUserChanged, theme, setTheme, installPrompt, do
     setBusy(true); setEmailMsg("");
     try { await patch({ email: email.trim() }); setEmailMsg("Saved."); }
     catch (err) { setEmailMsg(err.message || "Couldn't save"); }
+    finally { setBusy(false); }
+  };
+  const saveAlts = async () => {
+    setBusy(true); setAltMsg("");
+    try { await patch({ altEmails: alts.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean) }); setAltMsg("Saved."); }
+    catch (err) { setAltMsg(err.message || "Couldn't save"); }
     finally { setBusy(false); }
   };
   const pickPhoto = async (e) => {
@@ -8515,6 +8886,21 @@ function MyAccountCard({ user, onUserChanged, theme, setTheme, installPrompt, do
           <Btn small onClick={saveEmail} disabled={busy}>Save email</Btn>
           {emailMsg && <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: emailMsg === "Saved." ? C.olive : C.rust }}>{emailMsg}</span>}
         </div>
+        {SETTINGS.inboundEmail && (
+          <div style={{ marginTop: 14 }}>
+            <Field label="Alternate sender addresses (for emailing or texting in a work request)">
+              <input style={inputStyle} value={alts} onChange={(e) => setAlts(e.target.value)} placeholder="5195551234@msg.telus.com, name@work.com" />
+            </Field>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.inkFaint, margin: "-6px 0 10px" }}>
+              {SETTINGS.inboundAddress ? <>Send or forward a message to <b>{SETTINGS.inboundAddress}</b> from your email address or any address listed here. </> : "Messages sent to the app's request address are accepted from your email address or any address listed here. "}
+              Forwarding a text from a phone usually arrives from the carrier's address (for example 5195551234@msg.telus.com); add it here. Separate several with commas.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Btn small onClick={saveAlts} disabled={busy}>Save addresses</Btn>
+              {altMsg && <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: altMsg === "Saved." ? C.olive : C.rust }}>{altMsg}</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={rule}><DigestSettings user={user} onSave={patch} mailOk={!!SETTINGS.mailConfigured} /></div>

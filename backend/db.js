@@ -197,6 +197,31 @@ try {
 } catch (e) {
   console.error("[maintenhance] v2.6.1 columns migration failed:", e.message);
 }
+// Migration (v2.9): alternate sender addresses per user (for email/text intake) and
+// the inbound request queue filled by POST /api/inbound/email.
+try {
+  const cols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!cols.includes("alt_emails")) db.exec("ALTER TABLE users ADD COLUMN alt_emails TEXT NOT NULL DEFAULT '[]'");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inbound_requests (
+      id TEXT PRIMARY KEY,
+      message_id TEXT UNIQUE,
+      sender TEXT NOT NULL,
+      user_id TEXT,
+      subject TEXT,
+      body TEXT,
+      draft TEXT,
+      photo_ids TEXT NOT NULL DEFAULT '[]',
+      verified INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'new',
+      work_request_id TEXT,
+      received_at TEXT NOT NULL,
+      resolved_at TEXT
+    );
+  `);
+} catch (e) {
+  console.error("[maintenhance] v2.9 migration failed:", e.message);
+}
 // The email now doubles as the password-reset address, so it must be
 // unique (case-insensitive). An existing database with duplicate emails
 // can't take the index; in that case skip it (the API still checks).
