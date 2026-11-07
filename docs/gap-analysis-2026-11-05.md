@@ -16,3 +16,6 @@ Nothing here has been built. Every gap is logged in docs/pending-changes.md (P-6
 | Deploy files | RELEASE.md Update line placement, no Actions run line, no deploy/.env.example, root compose lacks healthcheck/log limits/pin | P-11, P-16 |
 
 Conforming: release workflow (valid variant), /healthz body and no-auth, versions in sync, CHANGELOG limits, money handling noted as a deviation to confirm.
+
+## Status 2026-11-07
+All gaps above were built in v2.10.0 (P-6 to P-8, P-11 to P-16), except the Cloudflare Access JWT check and two-step sign-in decision (P-17). Lighthouse and layout findings are P-18. iOS install instructions were dropped. Money stays as decimal dollars by James's decision.
