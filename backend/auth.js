@@ -3,13 +3,17 @@ const bcrypt = require("bcryptjs");
 const db = require("./db");
 
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.warn(
-    "[maintenhance] WARNING: JWT_SECRET is not set. Using an insecure default — " +
-      "set JWT_SECRET to a long random string in your environment before exposing this beyond localhost."
+// v2.10: a missing or short secret stops the app at start-up instead of
+// silently signing sessions with a well-known default. NODE_ENV=test is the
+// only exception (the automated tests run without a real secret).
+if ((!JWT_SECRET || JWT_SECRET.length < 16) && process.env.NODE_ENV !== "test") {
+  console.error(
+    "[maintenhance] FATAL: JWT_SECRET is not set or is shorter than 16 characters. " +
+      "Set it to a long random string (for example: openssl rand -hex 32) and start again."
   );
+  process.exit(1);
 }
-const SECRET = JWT_SECRET || "dev-insecure-secret-change-me";
+const SECRET = JWT_SECRET || "test-only-secret-not-for-use";
 
 const MIN_PASSWORD_LENGTH = 8;
 

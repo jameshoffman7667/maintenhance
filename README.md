@@ -3,6 +3,8 @@
 > **MaintEnhance** (short form "ME") is the product name used throughout.
 > (Versions before v1.8 were called HomeKeep; see CHANGELOG.md.)
 
+> **Runs as UID 1000 / GID 100 (v2.10):** the container is no longer root. Before upgrading from an earlier version, make sure the folders mounted at `/data` and `/files` are owned by 1000:100 (`chown -R 1000:100 <folder>`), or the app cannot write its database and stops with a permissions error. Named Docker volumes need `docker run --rm -v <volume>:/v alpine chown -R 1000:100 /v` once. `JWT_SECRET` is now required (16+ characters). Run the tests with `cd backend && npm install && npm test`.
+
 > **Requests by email or text (v2.9):** set `INBOUND_EMAIL_SECRET` (and `INBOUND_EMAIL_ADDRESS` for display) and add the Cloudflare Email Worker in `deploy/inbound-email-worker.js` to turn messages sent to a request address into draft work requests that an Owner, Manager or Planner reviews. Build with AI also accepts lists and files, and Convert to work order has a Build with AI button. See `deploy/RELEASE.md` for the setup steps.
 
 > **Build with AI (v2.7):** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) to use Build with AI and AI link look-ups; the Owner turns Build with AI on or off under Features.
@@ -446,7 +448,7 @@ The database volume is untouched by any of the above.
   memory and reset on restart. For an internet-facing deployment, still
   consider a reverse proxy with its own protection.
 - Changing or resetting a password signs that account out everywhere else.
-- This app is scoped to a single household (per the functional spec) —
+- This app is scoped to a single household (per the functional spec in `docs/functional-spec.md`) —
   every account shares the same asset/location/work-order data. It's
   not designed for multiple unrelated households on one instance.
 

@@ -172,14 +172,30 @@ const GlobalStyle = () => (
     .hk-sidebar { transition: transform .18s ease; }
     .hk-hscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
     .hk-hscroll-in { min-width: 780px; }
+    :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--hk-ink, #28415F); outline-offset: 2px; }
+    .hk-bottomnav { display: none; }
     .hk-sidebar-backdrop { display: none; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 767px) {
       .hk-main-shell { margin-left: 0 !important; }
       .hk-sidebar { box-shadow: 3px 0 16px rgba(0,0,0,0.28); }
       .hk-sidebar-backdrop {
         display: block; position: fixed; inset: 0; background: rgba(20,26,22,0.45); z-index: 39;
       }
+      /* v2.10: bottom navigation bar on phones (the full menu stays under "More") */
+      .hk-bottomnav {
+        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--hk-panel, #fff);
+        border-top: 1px solid var(--hk-line, #ccd2cb); padding-bottom: env(safe-area-inset-bottom);
+      }
+      .hk-bottomnav-btn {
+        flex: 1; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+        background: none; border: none; cursor: pointer; color: var(--hk-ink-faint, #5d6b60); font: inherit; font-size: 11px; font-weight: 600; padding: 4px 2px;
+      }
+      .hk-bottomnav-btn.is-active { color: var(--hk-ink, #1c2a22); }
+      .hk-bottomnav-btn.is-active .hk-bottomnav-icon { background: rgba(214,106,35,0.16); }
+      .hk-bottomnav-icon { position: relative; display: flex; align-items: center; justify-content: center; width: 52px; height: 28px; border-radius: 14px; }
+      .hk-bottomnav-badge { position: absolute; top: -2px; right: 6px; background: #D66A23; color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 0 5px; line-height: 15px; }
+      .hk-main-shell { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
       .hk-topbar { padding: 10px 14px !important; }
       .hk-page-pad { padding: 14px !important; }
       .hk-user-meta { display: none; }
@@ -1918,9 +1934,39 @@ function ChangelogModal({ onClose }) {
     </Modal>
   );
 }
+// Menu entries this role may see (shared by the sidebar and the mobile bottom bar).
+function navItemsFor(role) {
+  return NAV.filter((n) => (!n.ownerOnly || role === "Owner") && (!n.adminOnly || isAdmin(role) || (n.id === "alarms" && canAck())) && (!n.notGuest || role !== "Guest") && (!n.featureKey || SETTINGS.features[n.featureKey])).map((n) => (n.id === "schedule" && execOn() ? { ...n, label: "Labour assignment" } : n));
+}
+
+function BottomNav({ tab, setTab, role, counts, onMore }) {
+  const ids = ["dashboard", "requests", "orders", "assets"];
+  const all = navItemsFor(role);
+  const main = ids.map((id) => all.find((n) => n.id === id)).filter(Boolean);
+  return (
+    <nav className="hk-bottomnav" aria-label="Main">
+      {main.map((n) => {
+        const Icon = n.icon;
+        const active = tab === n.id;
+        const badge = counts[n.id];
+        return (
+          <button key={n.id} type="button" data-bottomnav={n.id} className={"hk-bottomnav-btn" + (active ? " is-active" : "")} aria-current={active ? "page" : undefined} onClick={() => setTab(n.id)}>
+            <span className="hk-bottomnav-icon"><Icon size={20} />{!!badge && <span className="hk-bottomnav-badge">{badge}</span>}</span>
+            <span className="hk-bottomnav-label">{n.id === "assets" ? "Assets" : n.id === "requests" ? "Requests" : n.id === "orders" ? "Orders" : "Home"}</span>
+          </button>
+        );
+      })}
+      <button type="button" data-bottomnav="more" className="hk-bottomnav-btn" onClick={onMore}>
+        <span className="hk-bottomnav-icon"><Menu size={20} /></span>
+        <span className="hk-bottomnav-label">More</span>
+      </button>
+    </nav>
+  );
+}
+
 function Sidebar({ tab, setTab, open, role, counts, onNavigate, onClose }) {
   const [showLog, setShowLog] = useState(false);
-  const items = NAV.filter((n) => (!n.ownerOnly || role === "Owner") && (!n.adminOnly || isAdmin(role) || (n.id === "alarms" && canAck())) && (!n.notGuest || role !== "Guest") && (!n.featureKey || SETTINGS.features[n.featureKey])).map((n) => (n.id === "schedule" && execOn() ? { ...n, label: "Labour assignment" } : n));
+  const items = navItemsFor(role);
   return (
     <div
       style={{ width: 216, flexShrink: 0, background: SAFE_COLOR.test(SETTINGS.brand.colors.primary || "") ? SETTINGS.brand.colors.primary : DEFAULT_SETTINGS.brand.colors.primary, color: "#fff", display: open ? "flex" : "none", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 40 }}
@@ -7838,7 +7884,7 @@ const PC_CSS = `
 .pc-held{outline:2px solid var(--hk-orange)!important;outline-offset:1px;box-shadow:0 0 0 4px color-mix(in srgb,var(--hk-orange) 25%,transparent);}
 @media (pointer:coarse){.pc-card{cursor:pointer;}}
 /* v2.6: on narrow screens the work orders to place sit above the calendar, in a card about three work orders tall */
-@media (max-width:860px){
+@media (max-width:767px){
   .pc-split{grid-template-columns:minmax(0,1fr)!important;}
   .pc-side{order:-1;position:static!important;max-height:var(--pc-side-h,262px)!important;overflow-y:auto!important;}
 }
@@ -8966,7 +9012,7 @@ function MaintEnhanceAppInner() {
   // — captured once on first mount, consumed by AssetsView, then cleared.
   const deepLinkAssetId = useRef(parseAssetDeepLink());
   const [tab, setTabRaw] = useState(() => (deepLinkAssetId.current ? "assets" : "dashboard"));
-  const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth > 860));
+  const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth > 767));
   const [openOrderId, setOpenOrderId] = useState(null);
   const [pendingFilter, setPendingFilter] = useState(null);
   const [prefillOrder, setPrefillOrder] = useState(null);
@@ -9224,8 +9270,9 @@ function MaintEnhanceAppInner() {
     <DialogProvider>
       <div style={{ minHeight: "100vh", background: C.bg, fontFamily: FONT_BODY }}>
         <GlobalStyle />
-        <Sidebar tab={tab} setTab={setTab} open={sidebarOpen} onClose={() => setSidebarOpen(false)} role={role} counts={counts} onNavigate={() => { if (window.innerWidth <= 860) setSidebarOpen(false); }} />
+        <Sidebar tab={tab} setTab={setTab} open={sidebarOpen} onClose={() => setSidebarOpen(false)} role={role} counts={counts} onNavigate={() => { if (window.innerWidth <= 767) setSidebarOpen(false); }} />
         {sidebarOpen && <div className="hk-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+        <BottomNav tab={tab} setTab={setTab} role={role} counts={counts} onMore={() => setSidebarOpen(true)} />
         <div className="hk-main-shell" style={{ marginLeft: sidebarOpen ? 216 : 0, transition: "margin .15s ease" }}>
           <div className="hk-topbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", borderBottom: `1px solid ${C.line}`, background: C.panel, position: "sticky", top: 0, zIndex: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
@@ -9262,7 +9309,7 @@ function MaintEnhanceAppInner() {
                 </button>
                 {userMenu && (
                   <div role="menu" data-usermenu-pop style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, minWidth: 190, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 6, boxShadow: "0 6px 20px rgba(0,0,0,.18)", padding: 6, zIndex: 40 }}>
-                    <button role="menuitem" className="hk-row" onClick={() => { setUserMenu(false); TOOLS_FOCUS = "tools-account"; setTab("owner"); if (window.innerWidth <= 860) setSidebarOpen(false); }}
+                    <button role="menuitem" className="hk-row" onClick={() => { setUserMenu(false); TOOLS_FOCUS = "tools-account"; setTab("owner"); if (window.innerWidth <= 767) setSidebarOpen(false); }}
                       style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "9px 10px", borderRadius: 4, fontFamily: FONT_BODY, fontSize: 13, color: C.ink }}>
                       <Settings size={15} color={C.inkSoft} /> Account settings
                     </button>

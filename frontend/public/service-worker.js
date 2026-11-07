@@ -1,51 +1,65 @@
-// Minimal app-shell cache so the installed Android/desktop PWA can at
-// least open while offline or on a flaky connection. API requests always
-// go to the network — this app's data is per-household and live, not
-// something we want served stale from cache.
+// MaintEnhance service worker (v2.10).
 //
-// Everything below is computed from self.registration.scope rather than
-// hardcoded absolute paths, so this works whether the app is deployed at
-// the domain root or under a subpath (e.g. /maintenhance/).
+// - Precaches the app shell only (the page, manifest, icons and the offline
+//   page). It never caches API responses, sign-in pages or anything
+//   user-specific.
+// - Page loads (navigations) are network-first; if the network fails the
+//   cached shell is used, and if that is missing the offline page.
+// - The cache name carries the app version; old caches are deleted on
+//   activate.
+// - A new worker waits until the person taps "Reload" in the update prompt
+//   (the page sends SKIP_WAITING); it never takes over in the middle of a form.
+//
+// Paths are computed from the worker's scope so this also works under a
+// subpath (for example /maintenhance/).
 const SCOPE = self.registration.scope;
-const CACHE_NAME = "maintenhance-shell-v1";
-const SHELL_URLS = ["", "index.html", "manifest.json", "icon-192.png", "icon-512.png"].map(
+const CACHE_NAME = "maintenhance-shell-v2.10.0";
+const SHELL_URLS = ["", "index.html", "offline.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"].map(
   (p) => new URL(p, SCOPE).toString()
 );
+const OFFLINE_URL = new URL("offline.html", SCOPE).toString();
 const API_PATH_PREFIX = new URL("api/", SCOPE).pathname;
+const NEVER_CACHE = ["healthz", "manifest.webmanifest", "manifest.json", "service-worker.js"].map((p) => new URL(p, SCOPE).pathname);
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS)).catch(() => {})
-  );
-  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS)).catch(() => {}));
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))).then(() => self.clients.claim())
   );
-  self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  // API calls, the health probe, the manifest and the worker itself always go to the network.
+  if (url.pathname.startsWith(API_PATH_PREFIX) || NEVER_CACHE.includes(url.pathname)) return;
 
-  // Never cache API calls — always hit the network.
-  if (url.pathname.startsWith(API_PATH_PREFIX)) return;
-  // Health probe: always live, never cached.
-  if (url.pathname === new URL("healthz", SCOPE).pathname) return;
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req).catch(() =>
+        caches.match(new URL("index.html", SCOPE).toString()).then((r) => r || caches.match(OFFLINE_URL))
+      ).then((r) => r || new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } }))
+    );
+    return;
+  }
 
-  if (event.request.method !== "GET") return;
-
+  // Static files (built scripts, styles, icons): serve from cache when present, refresh in the background.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
+    caches.match(req).then((cached) => {
+      const network = fetch(req)
         .then((response) => {
-          if (response && response.status === 200) {
+          if (response && response.status === 200 && response.type === "basic") {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
           }
           return response;
         })
@@ -54,4 +68,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-

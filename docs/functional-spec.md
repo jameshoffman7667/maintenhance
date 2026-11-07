@@ -405,6 +405,15 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 
 - Convert to work order has a Build with AI button (not for PM Base). It sends the request's text to the AI, which drafts the type (Corrective, PM or Benchmark), a short work plan, the crew size, hours per person and a required-by date. The person reviews the draft; applying fills in the form (it fills only empty crew, hours and date fields) and shows the work plan in an editable box. The plan is added to the new work order's description under "Work plan:".
 
+### 3.35 Runtime hardening, security and schema versioning (v2.10)
+- **Container:** runs as UID 1000 / GID 100 under tini (PID 1). On SIGTERM or SIGINT the server stops accepting connections, finishes in-flight requests, closes the database and exits (hard stop after 8 s). Host folders mounted at `/data` and `/files` must be owned by 1000:100.
+- **Health check:** `GET /healthz` returns exactly `{"status":"ok","version":"<package version>"}` (no login, no cookie; 503 with `"status":"error"` if the database cannot be read). The image and compose health checks fail unless the body contains `"status":"ok"`.
+- **Start-up checks:** `JWT_SECRET` is required (16+ characters); the app exits with a clear message if it is missing.
+- **Proxy and headers:** `TRUST_PROXY` (default: loopback, link-local and private networks) controls which forwarded headers are trusted, so rate limits see the real client address. Every response carries a Content-Security-Policy (scripts from this origin only; inline styles and the Google Fonts stylesheet are allowed), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`. A write request whose `Origin` header names another host is refused with 403.
+- **Schema versioning:** a `schema_version` table records the schema level. Before the first start on a newer level, a full copy of the database is written to `<FILES_DIR>/backups/pre-migrate-<from>-to-<to>-<time>.db` (never pruned by the app). Migrations are additive, so the previous image still starts on a migrated database.
+- **Change log reader:** the in-app version history understands both the old "Commit short description" and the current "Short / Long" entries.
+- **Tests:** `npm test` in `backend/` runs the release rules (versions, changelog lengths, manifest, service worker cache name, Dockerfile) and starts the real server to check `/healthz`, headers, the secret check, schema copy and SIGTERM shutdown.
+
 ## 4. Non-Functional Requirements
 
 | Category | Requirement |
@@ -495,3 +504,19 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - Multi-property support for landlords or vacation homes
 - Barcode/QR code scanning for parts (asset QR label generation shipped in v1.2 — see 3.2)
 - ~~Componentization / feature-flag layer~~ — shipped in v2 as env flags, replaced in v2.2 by Owner-managed settings (see 3.16); "editions" no longer exist.
+
+## 9. Mobile layout, desktop layout and PWA (v2.10)
+
+### Mobile layout (under 768 px)
+- Single column. A bottom navigation bar holds Home (dashboard), Requests, Orders, Assets and More; More opens the full menu (the same sidebar, as a slide-over with a backdrop). The bar respects the device safe area and each button is at least 56 px tall.
+- Cards and forms stack in one column, controls are at least 38-40 px tall, schedules scroll sideways inside their own card, dialogs open as bottom sheets, and the page does not scroll sideways at 320 px.
+- Work requests can be submitted offline; they queue on the device and sync when the connection returns.
+
+### Desktop layout (768 px and wider)
+- Fixed sidebar (216 px, collapsible) with the full menu, top bar with the account menu, multi-column cards and tables. The bottom bar is hidden. Keyboard focus is shown with a visible outline.
+- Feature parity with mobile; nothing is mobile-only or desktop-only.
+
+### PWA
+- Manifest `manifest.webmanifest` (also served at `/manifest.json` for earlier installs), generated per request from the Owner's branding (name, short name, theme colour), `application/manifest+json`, `Cache-Control: no-cache`. Values: `id` maintenhance, `start_url` and `scope` `.`, `display` standalone, icons 192 and 512 (any) and 192 and 512 (maskable), an Apple touch icon (180 px), one wide (1280x720) and one narrow (540x960) screenshot taken from demo data.
+- Service worker `service-worker.js` (cache `maintenhance-shell-v<app version>`): precaches the shell only, page loads are network-first with the cached shell and then `offline.html` as fallbacks, API calls, `/healthz` and the manifest are never cached, old caches are deleted on activate. A new worker waits; an "Update available" bar with Reload and Later buttons appears, and the page reloads on the controller change only if it already had a controller.
+- Install: an "Install app" button appears under My account when the browser offers one (Chrome, Edge, Android). Installation needs HTTPS (the app's `https://` hostname). Cloudflare Access must let `/manifest.webmanifest`, `/service-worker.js`, `/offline.html` and the icon files through.

@@ -2,5 +2,14 @@
 **/dist
 **/data
 .git
+.github
+docs
+deploy
+**/test
 .env
+*.db
+*.db-wal
+*.db-shm
 *.log
+*.md
+!CHANGELOG.md

@@ -16,6 +16,64 @@ const backup = require("./backup");
 const crypto = require("crypto");
 
 const app = express();
+
+// v2.10: behind Caddy / Cloudflare every request arrives from the proxy, so
+// trust the forwarded headers (client IP, protocol) from private networks
+// only. Set TRUST_PROXY to a number of hops, "false", or a subnet list to
+// override.
+{
+  const tp = (process.env.TRUST_PROXY || "loopback, linklocal, uniquelocal").trim();
+  app.set("trust proxy", /^\d+$/.test(tp) ? parseInt(tp, 10) : tp === "false" ? false : tp);
+}
+
+// v2.10: baseline security headers. The CSP is "relaxed" on purpose: scripts
+// only from this origin, but inline styles and the Google Fonts stylesheet are
+// allowed because the UI uses inline style attributes (see P-14).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", CSP);
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// v2.10: same-origin check on writes. SameSite=Lax already blocks most
+// cross-site posts; this also rejects a write whose Origin header names a
+// different host than the one the request was sent to. Requests with no
+// Origin (scripts, the inbound-email Worker) pass; the Worker has its own
+// secret.
+// The allowed hosts are the Host header, X-Forwarded-Host (set by Caddy) and
+// the host of APP_URL, so a proxy that rewrites Host cannot lock people out.
+// ORIGIN_CHECK=false switches the check off.
+app.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (process.env.ORIGIN_CHECK === "false") return next();
+  const origin = req.get("origin");
+  if (!origin) return next();
+  let host = "";
+  try { host = new URL(origin).host; } catch (e) { return res.status(403).json({ error: "Cross-site request blocked" }); }
+  const allowed = [req.get("host"), ...(req.get("x-forwarded-host") || "").split(",")].map((h) => (h || "").trim()).filter(Boolean);
+  try { if (process.env.APP_URL) allowed.push(new URL(process.env.APP_URL).host); } catch (e) { /* bad APP_URL: ignore */ }
+  if (!allowed.includes(host)) {
+    console.warn(`[maintenhance] Blocked a ${req.method} to ${req.path}: Origin host ${host} is not one of ${allowed.join(", ")}`);
+    return res.status(403).json({ error: "Cross-site request blocked" });
+  }
+  next();
+});
 const PORT = process.env.PORT || 8040;
 
 // v2.8.0: health probe for Docker and uptime checks. Registered before the
@@ -798,18 +856,25 @@ const staticDir = path.join(__dirname, "public");
 // The PWA manifest is generated from the Owner's saved branding so the
 // installed app's name and theme colour match. Registered ahead of
 // express.static so it wins over the built file.
-app.get("/manifest.json", (req, res) => {
+const sendManifest = (req, res) => {
   let base = {};
-  try { base = JSON.parse(fs.readFileSync(path.join(staticDir, "manifest.json"), "utf8")); } catch (e) { /* dev/no build */ }
+  try { base = JSON.parse(fs.readFileSync(path.join(staticDir, "manifest.webmanifest"), "utf8")); } catch (e) { /* dev/no build */ }
   const b = settings.current().brand;
-  res.type("application/manifest+json").json({
+  res.set("Cache-Control", "no-cache");
+  res.type("application/manifest+json").send(JSON.stringify({
     ...base,
     name: b.name,
     short_name: b.shortName && b.name.length > 12 ? b.shortName : b.name,
     description: `${b.name} — ${b.tagline || "maintenance management"}`,
     theme_color: b.colors.primary,
-  });
-});
+  }));
+};
+// manifest.json stays as an alias so phones that installed the app earlier
+// keep working.
+app.get("/manifest.webmanifest", sendManifest);
+app.get("/manifest.json", sendManifest);
+// The service worker and offline page must never be served stale.
+app.get(["/service-worker.js", "/offline.html"], (req, res, next) => { res.set("Cache-Control", "no-cache"); next(); });
 app.use(express.static(staticDir));
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
@@ -819,7 +884,28 @@ app.get("*", (req, res, next) => {
 runMigrations();
 backup.register(app, { requireAuth, requireOwner, ATTACH_DIR });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`MaintEnhance server listening on port ${PORT}`);
   startNotificationScheduler(db);
 });
+
+// v2.10: clean shutdown. On SIGTERM / SIGINT stop taking new connections,
+// let in-flight requests finish, close the database and exit; a hard exit
+// follows after 8 seconds if something is stuck (Docker's own grace period is
+// 10 seconds by default).
+let shuttingDown = false;
+function shutdown(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[maintenhance] ${sig} received, shutting down`);
+  const force = setTimeout(() => { console.error("[maintenhance] shutdown timed out, exiting"); process.exit(1); }, 8000);
+  force.unref();
+  server.close(() => {
+    try { db.close(); } catch (e) { console.error("[maintenhance] database close failed:", e.message); }
+    console.log("[maintenhance] shutdown complete");
+    process.exit(0);
+  });
+  if (server.closeIdleConnections) server.closeIdleConnections();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

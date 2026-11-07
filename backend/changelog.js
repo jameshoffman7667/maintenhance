@@ -25,6 +25,14 @@ function load() {
   while ((m = re.exec(text))) {
     const v = m[1].replace(/^v/, "");
     let body = m[2];
+    // v2.10: current format is "**Short:** ..." and "**Long:** ..."; older
+    // entries use "**Commit short description:** `...`" / "**Commit extended description:**".
+    const nShort = (/^\*\*Short:\*\*[ \t]*(.*)$/m.exec(body) || [])[1];
+    const nLong = (/^\*\*Long:\*\*[ \t]*([\s\S]*?)(?=^\*\*Short:|\n\s*\n\s*(?:#|\*\*)|(?![\s\S]))/m.exec(body) || [])[1];
+    if (nShort !== undefined) {
+      entries.push({ version: v, title: nShort.trim(), text: (nLong || "").trim() });
+      continue;
+    }
     const short = (/\*\*Commit short description:\*\*\s*`([^`]*)`/.exec(body) || [])[1] || "";
     const ext = (/\*\*Commit extended description:\*\*\s*\n?([\s\S]*)/.exec(body) || [])[1];
     body = (ext !== undefined ? ext : body.replace(/\*\*Commit short description:\*\*[^\n]*\n/, "")).trim();

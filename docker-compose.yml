@@ -10,7 +10,7 @@ services:
     # alone) never needs the Dockerfile or source tree, just Docker
     # Hub access. To build the image yourself instead of waiting on
     # CI, see "Prebuilding the image" in README.md.
-    image: mybadreligon/maintenhance:latest
+    image: mybadreligon/maintenhance:2.10.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -53,6 +53,8 @@ services:
       # Optional (v2.9): email/text intake. See deploy/RELEASE.md. Blank = off.
       - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
       - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}
+      # Optional (v2.10): which forwarded headers to trust. Blank = private networks only.
+      - TRUST_PROXY=${TRUST_PROXY:-}
       # Name, logo, colours, location labels and feature toggles are set
       # in the app by the Owner (Owner Tools), not here.
     volumes:
@@ -68,6 +70,19 @@ services:
       # to change this — both the host and container side move together.
       # Local web portal access: http://<this-machine's-LAN-IP>:${PORT:-8040}
       - "${PORT:-8040}:${PORT:-8040}"
+    # v2.10: same check as the image's HEALTHCHECK (public /healthz, the body must contain "status":"ok").
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:$${PORT}/healthz').then(r=>r.json()).then(j=>process.exit(j.status==='ok'?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   maintenhance_data:

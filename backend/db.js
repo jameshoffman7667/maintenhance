@@ -5,10 +5,54 @@ const Database = require("better-sqlite3");
 // DATA_DIR should point at a mounted volume so the database survives
 // container restarts/rebuilds. See docker-compose.yml.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// v2.10: the container runs as UID 1000 / GID 100. If the mounted data folder
+// is not writable by that user, say so plainly instead of a database error.
+function requireWritable(dir, what) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.accessSync(dir, fs.constants.W_OK);
+  } catch (e) {
+    const uid = typeof process.getuid === "function" ? process.getuid() : "?";
+    const gid = typeof process.getgid === "function" ? process.getgid() : "?";
+    console.error(
+      `[maintenhance] FATAL: cannot write to ${what} (${dir}) as UID ${uid} / GID ${gid}: ${e.code || e.message}. ` +
+        `Make the folder owned by that user (for example: chown -R 1000:100 <host folder>) and start again.`
+    );
+    process.exit(1);
+  }
+}
+requireWritable(DATA_DIR, "the data folder");
 
 const db = new Database(path.join(DATA_DIR, "maintenhance.db"));
 db.pragma("journal_mode = WAL");
+
+// v2.10: schema versioning. SCHEMA_VERSION is bumped by hand whenever a
+// migration below is added. Before the first start on a newer schema, a
+// complete copy of the database is written next to the nightly snapshots as
+// pre-migrate-<from>-to-<to>-<time>.db (the nightly pruning ignores these
+// files, and they are never deleted by the app). A fresh database needs no
+// copy. All migrations are additive, so the previous image still starts on a
+// migrated database.
+const SCHEMA_VERSION = 10;
+{
+  const has = (n) => db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(n);
+  let from = 0;
+  try { if (has("schema_version")) from = (db.prepare("SELECT version FROM schema_version").get() || {}).version || 0; } catch (e) { from = 0; }
+  const hasData = has("users") || has("household") || has("app_data");
+  if (hasData && from < SCHEMA_VERSION) {
+    try {
+      const dir = process.env.BACKUP_DIR || path.join(process.env.FILES_DIR || DATA_DIR, "backups");
+      fs.mkdirSync(dir, { recursive: true });
+      const t = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      const target = path.join(dir, `pre-migrate-${from}-to-${SCHEMA_VERSION}-${t}.db`);
+      db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+      console.log(`[maintenhance] Schema ${from} -> ${SCHEMA_VERSION}: database copied to ${target} before migrating.`);
+    } catch (e) {
+      console.error("[maintenhance] FATAL: could not write the pre-migration database copy:", e.message);
+      process.exit(1);
+    }
+  }
+}
 
 // Migration (v1.8): the single-row JSON-blob table was named `household`
 // from the app's original single-household scope. Renamed to the
@@ -234,6 +278,13 @@ try {
 // Exposed so server.js can put uploaded attachment files under the same
 // mounted-volume root the database itself lives in (DATA_DIR), without
 // duplicating the env-var-vs-default logic above.
+// v2.10: record that this database is now at SCHEMA_VERSION.
+db.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)");
+db.transaction(() => {
+  const row = db.prepare("SELECT version FROM schema_version").get();
+  if (!row) db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(SCHEMA_VERSION);
+  else if (row.version < SCHEMA_VERSION) db.prepare("UPDATE schema_version SET version = ?").run(SCHEMA_VERSION);
+})();
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;
 
@@ -246,7 +297,7 @@ const FILES_DIR = process.env.FILES_DIR || DATA_DIR;
 const ATTACH_DIR = process.env.ATTACH_DIR || path.join(FILES_DIR, "attachments");
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(FILES_DIR, "backups");
 const TMP_DIR = process.env.TMP_DIR || path.join(FILES_DIR, "tmp");
-for (const d of [FILES_DIR, ATTACH_DIR, BACKUP_DIR, TMP_DIR]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+for (const d of [FILES_DIR, ATTACH_DIR, BACKUP_DIR, TMP_DIR]) requireWritable(d, "the files folder");
 module.exports.FILES_DIR = FILES_DIR;
 module.exports.ATTACH_DIR = ATTACH_DIR;
 module.exports.BACKUP_DIR = BACKUP_DIR;

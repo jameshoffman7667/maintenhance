@@ -1,6 +1,6 @@
 services:
   maintenhance:
-    image: mybadreligon/maintenhance:2.9.0
+    image: mybadreligon/maintenhance:2.10.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -25,6 +25,8 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-}
       - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
       - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}
+      # Optional (v2.10): which forwarded headers to trust. Blank = private networks only.
+      - TRUST_PROXY=${TRUST_PROXY:-}
     ports:
       - "${PORT_HOST}:${PORT_HOST}"          # container port = host port
     volumes:
@@ -35,8 +37,8 @@ services:
         bind:
           create_host_path: false      # pool paths must exist; fail loudly if the pool is not mounted
     healthcheck:
-      # Same check as the image's HEALTHCHECK: public, login-free /healthz on $PORT.
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:$${PORT}/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # Same check as the image's HEALTHCHECK: public, login-free /healthz on $PORT; the body must say status ok.
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:$${PORT}/healthz').then(r=>r.json()).then(j=>process.exit(j.status==='ok'?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
