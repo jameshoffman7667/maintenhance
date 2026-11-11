@@ -16,6 +16,27 @@ Requested: 2026-11-07 (logged by Claude from the v2.10.0 Lighthouse run, not req
 Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
+### P-19 - Android app (Trusted Web Activity) and F-Droid publishing: the section 15 pilot
+Requested: 2026-11-10 (James: "MaintEnhance is the Android pilot ... Log the Android pilot as a pending item per section 1a ... Do not build until I say build"). Spec: docs/handoff-app-development.md v1.10, section 15, draft status lifted by James for this chat only.
+Type: minor (new Android build, assetlinks route, workflow job)        Status: Pending
+Notes / questions:
+- Instance: the APK opens the home instance, https://maintenhance.hoffmanhouse.ca (port 8040), unless James says twl (https://maintenhance-twl.hoffmanhouse.ca, 8041). James has not chosen; default is home.
+- Package id ca.hoffmanhouse.maintenhance; versionName = release version; versionCode = MAJOR*100000000 + MINOR*10000 + PATCH (2.11.0 -> 200110000). Expected bump: minor (2.11.0).
+- Repo work when built: twa-manifest.json (Bubblewrap, fallbackType customtabs, maskable icons, startUrl ".", host above); split release.yml into prepare, image and android jobs (needs [prepare, image], gate step skips apps without twa-manifest.json, APK named maintenhance-<version>.apk, attached to the release the image job creates; no tag is ever pushed); serve /.well-known/assetlinks.json with its own route (express.static skips dot-folders), no redirect, application/json, package id plus the SHA-256 fingerprint James supplies (the fingerprint is public, so it can live in the repo); functional-spec Android section; RELEASE.md Android line; CHANGELOG.
+- James's own steps, none done yet: (1) create the signing key himself with keytool (PKCS12, RSA 4096, 10000 days); (2) add the four GitHub secrets ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD; (3) read the SHA-256 fingerprint and send it back (never the key or passwords); (4) Cloudflare Access: the existing bypass application "family apps public files" covers /manifest.json but not /manifest.webmanifest (which the page has linked since v2.10.0) and not /.well-known/assetlinks.json; both paths must be added or the install and the TWA verification get the Access login page; (5) keep a backup of the key (password manager plus offline copy); (6) check the first APK on a real phone (no address bar visible); (7) Claude Code adds jameshoffman7667/maintenhance to the fdroid apps.txt (one line, given after the APK exists).
+- Expect the android job to need patch releases; a failed android job leaves the image, release and tag good.
+- Out of scope: push notifications and share targets. Not built until James sends a build message; the release will say Update: later unless he writes "build, push and update".
+
+### P-20 - AI usage to the v1.10 rules (section 14): provider-agnostic wrapper and declarations
+Requested: 2026-11-10 (logged by Claude from the spec v1.10 gap check, not requested by James)
+Type: minor        Status: Pending
+Notes / questions: The app calls Google Gemini directly (GEMINI_API_KEY, GEMINI_MODEL; backend/aibuild.js, backend/prefill.js). Spec v1.10 requires: one wrapper module that is the only code talking to a model; configuration through AI_ENABLED, AI_BASE_URL (OpenAI-compatible endpoint), AI_API_KEY, AI_MODEL, optional AI_MODEL_<TASK>, AI_TIMEOUT_MS, AI_MAX_CONCURRENCY; strict JSON output with validation; one versioned prompt file per task plus a small fixture set; timeouts, retries with backoff and a concurrency cap; one log line per call (ai_call task=... model=... ok=... ms=... tokens_in=... tokens_out=...) with no prompts or responses logged; an "AI usage" section in docs/functional-spec.md and an AI line in deploy/RELEASE.md listing every feature (page prefill, Build with AI single and many, refine, email intake drafting), data sent (including photos and forwarded email text) and registry rows for the homelab docs/ai-inventory.md. Questions: keep GEMINI_API_KEY and GEMINI_MODEL working as fallbacks for existing .env files (recommended)? Is Gemini reached through its OpenAI-compatible endpoint by default, so a local Ollama or llama.cpp server is a drop-in?
+
+### P-21 - RELEASE.md fields added in spec v1.10
+Requested: 2026-11-10 (logged by Claude from the spec v1.10 gap check, not requested by James)
+Type: patch (docs only)        Status: Pending
+Notes / questions: v1.10 RELEASE.md adds AI: and Android: lines and a Docker build line after Rollback; ours has the Docker build text inside a longer line and no AI or Android line. Folded into P-19 (Android line) and P-20 (AI line); this entry covers the remaining layout so the file matches section 8 exactly. Can be built with P-19 or alone.
+
 ## Done
 
 ### P-1 - Build with AI: multi-entity from a list (text or attachment)
