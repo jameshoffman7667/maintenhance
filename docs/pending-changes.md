@@ -17,7 +17,7 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ### P-19 - Android app (Trusted Web Activity) and F-Droid publishing: the section 15 pilot
-Requested: 2026-11-10 (James: "MaintEnhance is the Android pilot ... Log the Android pilot as a pending item per section 1a ... Do not build until I say build"). Spec: docs/handoff-app-development.md v1.10, section 15, draft status lifted by James for this chat only.
+Requested: 2026-11-10 (James: "MaintEnhance is the Android pilot ... Log the Android pilot as a pending item per section 1a ... Do not build until I say build"). Spec: docs/handoff-app-development.md v1.10, section 15, in the homelab repo (the only copy; this repo keeps none), draft status lifted by James for this chat only.
 Type: minor (new Android build, assetlinks route, workflow job)        Status: Pending
 Notes / questions:
 - Instance: the APK opens the home instance, https://maintenhance.hoffmanhouse.ca (port 8040), unless James says twl (https://maintenhance-twl.hoffmanhouse.ca, 8041). James has not chosen; default is home.
