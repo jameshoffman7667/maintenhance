@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.9.0
+Current release: v2.11.0
 
 ## Pending
 
@@ -16,9 +16,11 @@ Requested: 2026-11-07 (logged by Claude from the v2.10.0 Lighthouse run, not req
 Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
+## Done
+
 ### P-19 - Android app (Trusted Web Activity) and F-Droid publishing: the section 15 pilot
 Requested: 2026-11-10 (James: "MaintEnhance is the Android pilot ... Log the Android pilot as a pending item per section 1a ... Do not build until I say build"). Spec: docs/handoff-app-development.md v1.10, section 15, in the homelab repo (the only copy; this repo keeps none), draft status lifted by James for this chat only.
-Type: minor (new Android build, assetlinks route, workflow job)        Status: Pending
+Type: minor (new Android build, assetlinks route, workflow job)        Status: Built in v2.11.0
 Notes / questions:
 - Instance: the APK opens the home instance, https://maintenhance.hoffmanhouse.ca (port 8040), unless James says twl (https://maintenhance-twl.hoffmanhouse.ca, 8041). James has not chosen; default is home.
 - Package id ca.hoffmanhouse.maintenhance; versionName = release version; versionCode = MAJOR*100000000 + MINOR*10000 + PATCH (2.11.0 -> 200110000). Expected bump: minor (2.11.0).
@@ -29,15 +31,15 @@ Notes / questions:
 
 ### P-20 - AI usage to the v1.10 rules (section 14): provider-agnostic wrapper and declarations
 Requested: 2026-11-10 (logged by Claude from the spec v1.10 gap check, not requested by James)
-Type: minor        Status: Pending
+Type: minor        Status: Built in v2.11.0
 Notes / questions: The app calls Google Gemini directly (GEMINI_API_KEY, GEMINI_MODEL; backend/aibuild.js, backend/prefill.js). Spec v1.10 requires: one wrapper module that is the only code talking to a model; configuration through AI_ENABLED, AI_BASE_URL (OpenAI-compatible endpoint), AI_API_KEY, AI_MODEL, optional AI_MODEL_<TASK>, AI_TIMEOUT_MS, AI_MAX_CONCURRENCY; strict JSON output with validation; one versioned prompt file per task plus a small fixture set; timeouts, retries with backoff and a concurrency cap; one log line per call (ai_call task=... model=... ok=... ms=... tokens_in=... tokens_out=...) with no prompts or responses logged; an "AI usage" section in docs/functional-spec.md and an AI line in deploy/RELEASE.md listing every feature (page prefill, Build with AI single and many, refine, email intake drafting), data sent (including photos and forwarded email text) and registry rows for the homelab docs/ai-inventory.md. Questions: keep GEMINI_API_KEY and GEMINI_MODEL working as fallbacks for existing .env files (recommended)? Is Gemini reached through its OpenAI-compatible endpoint by default, so a local Ollama or llama.cpp server is a drop-in?
 
 ### P-21 - RELEASE.md fields added in spec v1.10
 Requested: 2026-11-10 (logged by Claude from the spec v1.10 gap check, not requested by James)
-Type: patch (docs only)        Status: Pending
+Type: patch (docs only)        Status: Built in v2.11.0
 Notes / questions: v1.10 RELEASE.md adds AI: and Android: lines and a Docker build line after Rollback; ours has the Docker build text inside a longer line and no AI or Android line. Folded into P-19 (Android line) and P-20 (AI line); this entry covers the remaining layout so the file matches section 8 exactly. Can be built with P-19 or alone.
 
-## Done
+Build note (2026-11-10): built as one release (v2.11.0). P-20 keeps GEMINI_* as the fallback and AI_ENABLED defaults to on-when-configured. P-19: the android job skips with a notice until the four secrets exist and the assetlinks fingerprint is added in a patch release.
 
 ### P-1 - Build with AI: multi-entity from a list (text or attachment)
 Requested: 2026-10-02 or earlier (James)

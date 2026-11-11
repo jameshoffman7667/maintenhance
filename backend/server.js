@@ -11,6 +11,7 @@ const { startNotificationScheduler, mailEnabled, sendMail } = require("./notify"
 const { FEATURES } = require("./features");
 const settings = require("./settings");
 const prefill = require("./prefill");
+const ai = require("./ai");
 const { runMigrations } = require("./migrate");
 const backup = require("./backup");
 const crypto = require("crypto");
@@ -138,9 +139,9 @@ const COOKIE_OPTS = {
 // Public (pre-login) config: Owner-managed brand, colours, terminology and
 // feature toggles (v2.2), plus whether the emailed password reset is available.
 const passwordResetAvailable = () => mailEnabled() && !!(process.env.APP_URL || "").trim();
-// Extra public flags: password reset availability and whether a Gemini key is
+// Extra public flags: password reset availability and whether an AI provider is
 // configured (only yes/no, never the key itself).
-const configExtra = () => ({ passwordResetEmail: passwordResetAvailable(), geminiKeyDetected: prefill.geminiAvailable(), mailConfigured: mailEnabled(), inboundEmail: require("./inbound").enabled(), inboundAddress: require("./inbound").enabled() ? require("./inbound").address() : "", version: require("./changelog").version });
+const configExtra = () => ({ passwordResetEmail: passwordResetAvailable(), geminiKeyDetected: ai.available(), aiAvailable: ai.available(), aiProvider: ai.status().provider, mailConfigured: mailEnabled(), inboundEmail: require("./inbound").enabled(), inboundAddress: require("./inbound").enabled() ? require("./inbound").address() : "", version: require("./changelog").version });
 app.get("/api/changelog", requireAuth, (req, res) => {
   const cl = require("./changelog");
   res.json({ version: cl.version, entries: cl.entries() });
@@ -873,6 +874,13 @@ const sendManifest = (req, res) => {
 // keep working.
 app.get("/manifest.webmanifest", sendManifest);
 app.get("/manifest.json", sendManifest);
+// Digital Asset Links for the Android app (v2.11). express.static skips dot-folders, so this is an
+// explicit route. It must be public (no login, no redirect) and application/json. The SHA-256
+// signing-certificate fingerprint is public; it is added to backend/assetlinks.json.
+app.get("/.well-known/assetlinks.json", (req, res) => {
+  res.type("application/json").set("Cache-Control", "public, max-age=300")
+    .send(fs.readFileSync(path.join(__dirname, "assetlinks.json"), "utf8"));
+});
 // The service worker and offline page must never be served stale.
 app.get(["/service-worker.js", "/offline.html"], (req, res, next) => { res.set("Cache-Control", "no-cache"); next(); });
 app.use(express.static(staticDir));

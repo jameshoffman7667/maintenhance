@@ -7,7 +7,9 @@
 
 > **Requests by email or text (v2.9):** set `INBOUND_EMAIL_SECRET` (and `INBOUND_EMAIL_ADDRESS` for display) and add the Cloudflare Email Worker in `deploy/inbound-email-worker.js` to turn messages sent to a request address into draft work requests that an Owner, Manager or Planner reviews. Build with AI also accepts lists and files, and Convert to work order has a Build with AI button. See `deploy/RELEASE.md` for the setup steps.
 
-> **Build with AI (v2.7):** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) to use Build with AI and AI link look-ups; the Owner turns Build with AI on or off under Features.
+> **Build with AI (v2.7):** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`), or, since v2.11, an OpenAI-compatible endpoint with `AI_BASE_URL` + `AI_MODEL` (+ `AI_API_KEY`), to use Build with AI, AI link look-ups and email drafts; `AI_ENABLED=false` turns all AI off; the Owner turns Build with AI on or off under Features. See `.env.example`.
+>
+> **Android app (v2.11):** each release can also publish `maintenhance-<version>.apk` (a Trusted Web Activity of the home instance) once the signing secrets exist; see docs/functional-spec.md section 3.36.
 
 A standalone, single-container build of the MaintEnhance household CMMS: a
 Node/Express + SQLite backend with real multi-user accounts, serving a
@@ -60,7 +62,7 @@ The app starts in its original configuration. After you sign in as Owner,
   warning), the six location-level labels (each required, up to 15
   characters, all different), which level is the "site" level, and the word
   used instead of "household". "Reset to defaults" restores the originals.
-- **Features:** Home Assistant alarms on/off; "Fill in from a link" on/off; and, if `GEMINI_API_KEY` is set in the Docker environment, a switch to use Gemini AI for it (the link and the page's text are then sent to Google).
+- **Features:** Home Assistant alarms on/off; "Fill in from a link" on/off; and, if an AI provider is configured (`AI_BASE_URL`/`AI_MODEL` or `GEMINI_API_KEY`), a switch to use AI for it (the link and the page's text are then sent to Google).
 
 Location labels are display-only (stored data uses stable keys), so they can be
 changed at any time. All of this is included in the Excel backup (Settings sheet).

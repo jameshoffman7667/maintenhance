@@ -1,6 +1,6 @@
 services:
   maintenhance:
-    image: mybadreligon/maintenhance:2.10.0
+    image: mybadreligon/maintenhance:2.11.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -23,6 +23,14 @@ services:
       - BACKUP_SNAPSHOTS=${BACKUP_SNAPSHOTS:-true}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # Optional (v2.11): AI provider. Either an OpenAI-compatible endpoint (AI_BASE_URL + AI_MODEL, e.g. a local
+      # Ollama) or, as before, GEMINI_API_KEY. AI_ENABLED=false turns every AI feature off. Blank = off/Gemini fallback.
+      - AI_ENABLED=${AI_ENABLED:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-}
+      - AI_MAX_CONCURRENCY=${AI_MAX_CONCURRENCY:-}
       - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
       - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}
       # Optional (v2.10): which forwarded headers to trust. Blank = private networks only.

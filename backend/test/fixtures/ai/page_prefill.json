@@ -1,0 +1,1 @@
+{ "task": "page_prefill", "reply": "{\"name\":\"Acme Sump Pump 1/3 HP\",\"manufacturer\":\"Acme\",\"model\":\"SP-33\",\"description\":\"A 1/3 HP submersible sump pump.\",\"price\":129.5}", "expect": { "name": "Acme Sump Pump 1/3 HP", "model": "SP-33" } }

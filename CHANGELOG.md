@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.11.0 - 2026-11-10
+**Short:** Add AI wrapper and Android app build
+**Long:** AI calls go through one wrapper that works with any OpenAI-compatible model (Gemini still works). Adds an Android app build from a TWA manifest, assetlinks, and a three-job release workflow. P-19, P-20, P-21.
+
 ## v2.10.0 - 2026-11-07
 **Short:** Harden image and security, improve PWA, add tests
 **Long:** Runs non-root under tini with clean SIGTERM, locked builds, body-checked healthcheck, security headers and CSP, schema versioning with pre-migration copy, offline page, update prompt, mobile bottom nav, npm test. P-6 to P-8, P-11 to P-16.

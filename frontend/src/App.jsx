@@ -1143,9 +1143,9 @@ function SectionHeader({ title, subtitle, action, info }) {
 
 
 /* ---- Build with AI (v2.7) ----
-   Describe what you want (and paste links); the server asks Gemini for a draft which is
+   Describe what you want (and paste links); the server asks the AI for a draft which is
    shown here for review. Nothing is saved until the person presses the apply button. */
-const aiOk = () => SETTINGS.features.aiBuilder !== false && !!SETTINGS.geminiKeyDetected && ME && ME.role !== "Guest";
+const aiOk = () => SETTINGS.features.aiBuilder !== false && !!SETTINGS.aiAvailable && ME && ME.role !== "Guest";
 const aiStr = (v, n = 400) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, n) : "");
 const aiNum = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
 const aiPick = (v, list, fb = "") => (list.includes(v) ? v : fb);
@@ -1240,7 +1240,7 @@ function AiBuildModal({ kind, title, hint, context, extra, review, apply, applyL
             </div>
           )}
           {error && <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.rust, marginTop: 8 }}>{error}</div>}
-          <div style={{ ...small, marginTop: 8 }}>Your text, any links and the names of your locations and assets are sent to Google's Gemini service. Please check the draft; AI can be wrong.</div>
+          <div style={{ ...small, marginTop: 8 }}>Your text, any links and the names of your locations and assets are sent to the AI service the server is set up with. Please check the draft; AI can be wrong.</div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
             <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
             <Btn variant="primary" onClick={run} disabled={busy || (!prompt.trim() && !(listMode && files.length))}>{busy ? <><Loader2 size={14} className="animate-spin" /> Building…</> : <><Wand2 size={14} /> {listMode ? "Build drafts" : "Build draft"}</>}</Btn>
@@ -7312,7 +7312,7 @@ function FeaturesCard() {
   };
   const note = { fontFamily: FONT_BODY, fontSize: 12, color: C.inkSoft };
   const row = { display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontFamily: FONT_BODY, fontSize: 13.5, color: C.ink, marginBottom: 12 };
-  const hasKey = !!SETTINGS.geminiKeyDetected;
+  const hasKey = !!SETTINGS.aiAvailable;
   return (
     <Panel style={{ padding: 18 }}>
       <div style={{ fontFamily: FONT_HEAD, fontSize: 15, fontWeight: 600, color: C.ink, marginBottom: 4 }}>Features<InfoTip k="features" /></div>
@@ -7327,15 +7327,15 @@ function FeaturesCard() {
       </label>
       <label style={{ ...row, opacity: SETTINGS.features.linkPrefill === false ? 0.5 : 1, marginLeft: 22 }}>
         <input type="checkbox" disabled={busy || !hasKey || SETTINGS.features.linkPrefill === false} checked={!!SETTINGS.features.linkPrefillAi} onChange={(e) => setFeature("linkPrefillAi", e.target.checked)} style={{ marginTop: 3 }} />
-        <span>Use AI (Gemini) to improve the results<div style={note}>
-          Gemini API key detected: <strong>{hasKey ? "yes" : "no"}</strong>.{" "}
-          {hasKey ? "When on, the link and the page's text are sent to Google's Gemini service for each look-up." : "Set GEMINI_API_KEY in the Docker environment to make this available."}
+        <span>Use AI to improve the results<div style={note}>
+          AI provider configured: <strong>{hasKey ? "yes" : "no"}</strong>.{" "}
+          {hasKey ? "When on, the link and the page's text are sent to the server's AI service for each look-up." : "Set AI_BASE_URL, AI_API_KEY and AI_MODEL (or GEMINI_API_KEY) in the Docker environment to make this available."}
         </div></span>
       </label>
       <label style={row}>
         <input type="checkbox" disabled={busy || !hasKey} checked={SETTINGS.features.aiBuilder !== false && hasKey} onChange={(e) => setFeature("aiBuilder", e.target.checked)} style={{ marginTop: 3 }} />
         <span>Build with AI<InfoTip k="aiBuild" /><div style={note}>
-          Adds a Build with AI button to the entry screens (work orders, requests, assets, bills of materials, locations, vendors, parts, PM programs and PM templates). You describe what you want, the AI drafts it and you review it before anything is saved. Uses Google's Gemini service with the same key as link look-ups (Gemini API key detected: <strong>{hasKey ? "yes" : "no"}</strong>{hasKey ? "" : " — set GEMINI_API_KEY in the Docker environment to use it"}). What you type, any links and your location and asset names are sent to Gemini.
+          Adds a Build with AI button to the entry screens (work orders, requests, assets, bills of materials, locations, vendors, parts, PM programs and PM templates). You describe what you want, the AI drafts it and you review it before anything is saved. Uses the server's AI service, the same one as link look-ups (AI provider configured: <strong>{hasKey ? "yes" : "no"}</strong>{hasKey ? "" : " — set AI_BASE_URL, AI_API_KEY and AI_MODEL (or GEMINI_API_KEY) in the Docker environment to use it"}). What you type, any links and your location and asset names are sent to that service.
         </div></span>
       </label>
       <label style={row}>
