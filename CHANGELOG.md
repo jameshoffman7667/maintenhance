@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.11.3 - 2026-11-11
+**Short:** Fix Android project and version fields
+**Long:** The Android job stopped at a Bubblewrap prompt because no project existed. The workflow now runs bubblewrap update first without prompts, and sets the version name and code in the fields Bubblewrap reads (P-24).
+
 ## v2.11.2 - 2026-11-11
 **Short:** Fix Android build SDK setup
 **Long:** The Android job failed because Bubblewrap rejected the runner's SDK folder. The workflow now creates the folder layout it expects and installs build-tools 36.1.0 and the Android 36 platform before building the APK (P-23).

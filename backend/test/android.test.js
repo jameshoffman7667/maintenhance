@@ -31,6 +31,11 @@ test("twa-manifest.json has the required fields", () => {
   assert.ok(!JSON.stringify(twa).match(/password/i), "no passwords in twa-manifest.json");
 });
 
+test("twa-manifest.json uses Bubblewrap's version fields (appVersion = name, appVersionCode = number)", () => {
+  assert.strictEqual(typeof twa.appVersion, "string"); assert.strictEqual(typeof twa.appVersionCode, "number");
+  assert.strictEqual(twa.appVersionName, undefined);
+});
+
 test("the manifest colours match the web manifest", () => {
   const web = JSON.parse(fs.readFileSync(path.join(root, "frontend/public/manifest.webmanifest"), "utf8"));
   assert.strictEqual(twa.themeColor.toLowerCase(), web.theme_color.toLowerCase());

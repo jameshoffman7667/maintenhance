@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.11.2
+Current release: v2.11.3
 
 ## Pending
 
@@ -17,6 +17,11 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-24 - Fix the Android job project generation and version fields
+Requested: 2026-11-11 (logged by Claude: the 2.11.2 android job stopped at a Bubblewrap prompt "No checksum file was found")
+Type: patch (workflow and twa-manifest.json)        Status: Built in v2.11.3
+Notes / questions: Added `bubblewrap update --skipVersionUpgrade` before the build and no-stdin calls; fixed the version fields (Bubblewrap reads appVersion as the name and appVersionCode as the code). Update: later.
 
 ### P-23 - Fix the Android job SDK setup
 Requested: 2026-11-11 (logged by Claude: the 2.11.1 android job failed with "The provided androidSdk isn't correct")

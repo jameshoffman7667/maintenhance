@@ -215,11 +215,13 @@ jobs:
           "$SDKM" "platform-tools" "build-tools;36.1.0" "platforms;android-36" >/dev/null
           node -e '
             const fs=require("fs"); const m=JSON.parse(fs.readFileSync("twa-manifest.json","utf8"));
-            m.appVersionName=process.env.VERSION; m.appVersion=process.argv[1];
+            m.appVersion=process.env.VERSION; m.appVersionCode=Number(process.argv[1]); delete m.appVersionName;
             m.signingKey={path:"./android.keystore",alias:process.env.KEY_ALIAS};
             fs.writeFileSync("twa-manifest.json",JSON.stringify(m,null,2));
           ' "$VERSION_CODE"
-          bubblewrap build --skipPwaValidation
+          # generate the Android project from twa-manifest.json (also writes manifest-checksum.txt) without prompting
+          bubblewrap update --skipVersionUpgrade < /dev/null
+          bubblewrap build --skipPwaValidation < /dev/null
           mv app-release-signed.apk "maintenhance-$VERSION.apk"
           rm -f android.keystore
 
