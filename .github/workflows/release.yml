@@ -206,7 +206,13 @@ jobs:
           # point Bubblewrap at the runner's JDK and Android SDK so it does not ask to download them
           mkdir -p "$HOME/.bubblewrap"
           printf '{"jdkPath":"%s","androidSdkPath":"%s"}' "$JAVA_HOME" "$ANDROID_HOME" > "$HOME/.bubblewrap/config.json"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          # Bubblewrap only accepts an SDK folder that has a "tools" or "bin" folder at its root and needs
+          # build-tools 36.1.0, so create the folder and install the pieces with the runner's sdkmanager.
+          sudo chmod -R a+rwX "$ANDROID_HOME" || true
+          mkdir -p "$ANDROID_HOME/tools"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null 2>&1 || true
+          "$SDKM" "platform-tools" "build-tools;36.1.0" "platforms;android-36" >/dev/null
           node -e '
             const fs=require("fs"); const m=JSON.parse(fs.readFileSync("twa-manifest.json","utf8"));
             m.appVersionName=process.env.VERSION; m.appVersion=process.argv[1];
