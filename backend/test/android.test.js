@@ -36,6 +36,10 @@ test("twa-manifest.json uses Bubblewrap's version fields (appVersion = name, app
   assert.strictEqual(twa.appVersionName, undefined);
 });
 
+test("minSdkVersion is at least 24 (androidbrowserhelper 2.7 needs it)", () => {
+  assert.ok(twa.minSdkVersion >= 24);
+});
+
 test("the manifest colours match the web manifest", () => {
   const web = JSON.parse(fs.readFileSync(path.join(root, "frontend/public/manifest.webmanifest"), "utf8"));
   assert.strictEqual(twa.themeColor.toLowerCase(), web.theme_color.toLowerCase());

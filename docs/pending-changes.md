@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.11.3
+Current release: v2.11.4
 
 ## Pending
 
@@ -17,6 +17,11 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-25 - Android minimum SDK 24
+Requested: 2026-11-11 (logged by Claude: the 2.11.3 android job failed in Gradle, "minSdkVersion 21 cannot be smaller than version 24")
+Type: patch (twa-manifest.json)        Status: Built in v2.11.4
+Notes / questions: minSdkVersion 24 means Android 7.0 or newer. Update: later.
 
 ### P-24 - Fix the Android job project generation and version fields
 Requested: 2026-11-11 (logged by Claude: the 2.11.2 android job stopped at a Bubblewrap prompt "No checksum file was found")

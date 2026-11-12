@@ -25,5 +25,6 @@
   },
   "appVersion": "0.0.0",
   "generatorApp": "bubblewrap-cli",
-  "appVersionCode": 1
+  "appVersionCode": 1,
+  "minSdkVersion": 24
 }

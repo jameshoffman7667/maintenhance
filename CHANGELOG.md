@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.11.4 - 2026-11-11
+**Short:** Set Android minimum SDK to 24
+**Long:** The Android build failed in Gradle because the browser helper library needs Android 7.0 (SDK 24) and the project asked for 21. twa-manifest.json now sets minSdkVersion 24 (P-25).
+
 ## v2.11.3 - 2026-11-11
 **Short:** Fix Android project and version fields
 **Long:** The Android job stopped at a Bubblewrap prompt because no project existed. The workflow now runs bubblewrap update first without prompts, and sets the version name and code in the fields Bubblewrap reads (P-24).
