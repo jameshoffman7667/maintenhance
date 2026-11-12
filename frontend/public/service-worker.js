@@ -13,7 +13,7 @@
 // Paths are computed from the worker's scope so this also works under a
 // subpath (for example /maintenhance/).
 const SCOPE = self.registration.scope;
-const CACHE_NAME = "maintenhance-shell-v2.11.0";
+const CACHE_NAME = "maintenhance-shell-v2.11.1";
 const SHELL_URLS = ["", "index.html", "offline.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"].map(
   (p) => new URL(p, SCOPE).toString()
 );

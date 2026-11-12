@@ -1,10 +1,14 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "ca.hoffmanhouse.maintenhance",
-      "sha256_cert_fingerprints": []
+      "sha256_cert_fingerprints": [
+        "6D:BC:4B:9E:4A:E1:E9:A3:42:C9:5A:C0:C0:7B:AD:56:DF:2F:46:8E:A3:04:92:48:E8:BE:66:37:A0:76:87:47"
+      ]
     }
   }
 ]

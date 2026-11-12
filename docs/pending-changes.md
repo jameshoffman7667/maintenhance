@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.11.0
+Current release: v2.11.1
 
 ## Pending
 
@@ -17,6 +17,11 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-22 - Add the Android signing fingerprint to assetlinks.json
+Requested: 2026-11-11 (James sent the SHA-256 fingerprint as the final step of P-19)
+Type: patch        Status: Built in v2.11.1
+Notes / questions: Fingerprint added to backend/assetlinks.json; the release also produces the first APK. Update: later (James did not write "build, push and update" for this release).
 
 ### P-19 - Android app (Trusted Web Activity) and F-Droid publishing: the section 15 pilot
 Requested: 2026-11-10 (James: "MaintEnhance is the Android pilot ... Log the Android pilot as a pending item per section 1a ... Do not build until I say build"). Spec: docs/handoff-app-development.md v1.10, section 15, in the homelab repo (the only copy; this repo keeps none), draft status lifted by James for this chat only.

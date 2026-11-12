@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.11.1 - 2026-11-11
+**Short:** Add Android signing fingerprint
+**Long:** Adds the SHA-256 fingerprint of the Android signing key to assetlinks.json so the app can verify the site and open full screen. The Android job now builds the first APK (P-22).
+
 ## v2.11.0 - 2026-11-10
 **Short:** Add AI wrapper and Android app build
 **Long:** AI calls go through one wrapper that works with any OpenAI-compatible model (Gemini still works). Adds an Android app build from a TWA manifest, assetlinks, and a three-job release workflow. P-19, P-20, P-21.
