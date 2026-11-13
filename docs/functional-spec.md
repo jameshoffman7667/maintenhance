@@ -431,6 +431,7 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - **Digital Asset Links:** the server serves `GET /.well-known/assetlinks.json` (public, no redirect, `application/json`) from `backend/assetlinks.json`, naming the package id and the signing certificate's SHA-256 fingerprint. Until the fingerprint is added the app opens with a browser address bar instead of full screen.
 - **Signing key:** created and kept by the owner (never in the repo or in chat); the fingerprint is public.
 - **Needs Cloudflare Access bypass** for `/manifest.webmanifest` and `/.well-known/assetlinks.json` (in addition to the existing PWA paths), otherwise the phone cannot verify the app.
+- **Site settings shortcut stays on** (`enableSiteSettingsShortcut: true`): the browser helper library enables its "manage data" activity at start and the app crashes at launch if that activity is not in the manifest.
 - **Out of scope:** push notifications and share targets.
 
 ## 4. Non-Functional Requirements

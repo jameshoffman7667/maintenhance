@@ -40,6 +40,10 @@ test("minSdkVersion is at least 24 (androidbrowserhelper 2.7 needs it)", () => {
   assert.ok(twa.minSdkVersion >= 24);
 });
 
+test("enableSiteSettingsShortcut stays true (the browser helper library toggles ManageDataLauncherActivity at start and crashes if it is missing)", () => {
+  assert.strictEqual(twa.enableSiteSettingsShortcut, true);
+});
+
 test("the manifest colours match the web manifest", () => {
   const web = JSON.parse(fs.readFileSync(path.join(root, "frontend/public/manifest.webmanifest"), "utf8"));
   assert.strictEqual(twa.themeColor.toLowerCase(), web.theme_color.toLowerCase());

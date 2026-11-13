@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.11.6 - 2026-11-12
+**Short:** Fix Android app crash at start (site settings)
+**Long:** The Android app crashed at start because the browser helper library toggles ManageDataLauncherActivity, which was left out of the manifest. twa-manifest.json now enables the site settings shortcut so it is included (P-27).
+
 ## v2.11.5 - 2026-11-12
 **Short:** Fix Android app crash at start
 **Long:** The Android app crashed on launch because the code shrinker renamed a class Android looks up by name. The release workflow now turns the shrinker off in the generated project (P-26).
