@@ -15,7 +15,7 @@ import QRCode from "qrcode";
 import { api } from "./api.js";
 import { shrinkImage } from "./imageShrink.js";
 import { PM_CATALOG_DEFAULT } from "./pmCatalog.js";
-import { pushLayer, setNavHandler, pushNav, replaceNav } from "./backNav.js";
+import { pushLayer, setNavHandler, pushNav, replaceNav, parseOpenLink } from "./backNav.js";
 import { queueItem, getQueuedItems, removeQueuedItem, updateQueuedItem } from "./offlineQueue.js";
 
 /* ============================================================
@@ -3556,7 +3556,7 @@ function wrToWoPrompt(data, wr) {
     (asset ? `ASSET: ${asset.name}${asset.manufacturer ? " (" + asset.manufacturer + (asset.model ? " " + asset.model : "") + ")" : ""}\n` : "") +
     `SUGGESTED TYPE: ${wr.suggestedType || ""}\nREQUIRED BY: ${wr.requiredByDate || ""}`;
 }
-function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingFilter, consumeFilter, isOnline, queueWorkRequest }) {
+function WorkRequestsView({ data, update, role, currentUser, goToOrder, focusId, consumeFocus, pendingFilter, consumeFilter, isOnline, queueWorkRequest }) {
   const dialog = useDialog();
   const closeGuard = useCloseGuard(dialog);
   const [modal, setModal] = useState(null);
@@ -3575,6 +3575,15 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
 
   useEffect(() => { if (pendingFilter) consumeFilter(); }, []); // eslint-disable-line
   useEffect(() => { loadInbox(); }, []); // eslint-disable-line
+  // v2.13: coming from a push notification, show that request: clear the filters, scroll to it and highlight it for a few seconds.
+  const [flashId, setFlashId] = useState(null);
+  useEffect(() => {
+    if (!focusId) return;
+    setStatusFilter("all"); setSearch(""); setPriorityFilter("all"); setLocFilter(null);
+    setFlashId(focusId); consumeFocus();
+    setTimeout(() => { const el = document.getElementById("wr-" + focusId); if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" }); }, 150);
+    setTimeout(() => setFlashId(null), 4000);
+  }, [focusId]); // eslint-disable-line
 
   const isFormOpen = modal === "new" || (modal && modal.action === "editRequest");
   const isDirty = isFormOpen && JSON.stringify(form) !== initial.current;
@@ -3842,7 +3851,7 @@ function WorkRequestsView({ data, update, role, currentUser, goToOrder, pendingF
           <Panel>
             {visible.length === 0 && <Empty text="No matching work requests." />}
             {visible.map((wr) => (
-              <div key={wr.id} style={{ padding: "14px 18px", borderTop: `1px solid ${C.lineSoft}` }}>
+              <div key={wr.id} id={"wr-" + wr.id} style={{ padding: "14px 18px", borderTop: `1px solid ${C.lineSoft}`, background: flashId === wr.id ? C.panelAlt : undefined, outline: flashId === wr.id ? `2px solid ${C.navy}` : undefined, outlineOffset: -2 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div>
                     <div style={{ fontFamily: FONT_BODY, fontSize: 14, fontWeight: 700, color: C.ink }}>{formatWrNum(wr.number)} · {wr.title}</div>
@@ -9087,9 +9096,12 @@ function MaintEnhanceAppInner() {
   // A scanned QR label (or any shared link) can land here as "#asset/<id>"
   // — captured once on first mount, consumed by AssetsView, then cleared.
   const deepLinkAssetId = useRef(parseAssetDeepLink());
-  const [tab, setTabRaw] = useState(() => (deepLinkAssetId.current ? "assets" : "dashboard"));
+  // v2.13: a tapped push notification opens "#open/wo/<id>", "#open/req/<id>" or "#open/alarms".
+  const openLink = useRef(typeof window !== "undefined" ? parseOpenLink(window.location.hash) : null);
+  const [tab, setTabRaw] = useState(() => (deepLinkAssetId.current ? "assets" : openLink.current ? { wo: "orders", req: "requests", alarms: "alarms" }[openLink.current.kind] : "dashboard"));
   const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth > 767));
-  const [openOrderId, setOpenOrderId] = useState(null);
+  const [openOrderId, setOpenOrderId] = useState(() => (openLink.current && openLink.current.kind === "wo" ? openLink.current.id : null));
+  const [focusRequestId, setFocusRequestId] = useState(() => (openLink.current && openLink.current.kind === "req" ? openLink.current.id : null));
   const [pendingFilter, setPendingFilter] = useState(null);
   const [prefillOrder, setPrefillOrder] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -9314,6 +9326,21 @@ function MaintEnhanceAppInner() {
     setPrefillOrder({ assetId: asset.id, locationId: asset.locationId });
   };
   const consumeDeepLinkAsset = () => { deepLinkAssetId.current = null; };
+  // Opens the item a notification points at (also used while the app is already open: the service worker posts the link).
+  const openLinkRef = useRef(null);
+  openLinkRef.current = (link) => {
+    if (!link) return;
+    if (link.kind === "wo") goToOrder(link.id);
+    else if (link.kind === "req") { navTab("requests"); setOpenOrderId(null); setPendingFilter(null); setFocusRequestId(link.id); }
+    else if (link.kind === "alarms") { navTab("alarms"); setOpenOrderId(null); setPendingFilter(null); }
+  };
+  useEffect(() => {
+    if (openLink.current) { try { window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ } openLink.current = null; }
+    if (typeof navigator === "undefined" || !navigator.serviceWorker) return undefined;
+    const onMsg = (e) => { if (e.data && e.data.type === "open") openLinkRef.current(parseOpenLink(e.data.hash)); };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+  }, []); // eslint-disable-line
 
   if (user === null) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}><GlobalStyle /><Loader2 className="animate-spin" size={20} color={C.inkSoft} /></div>;
   if (!user) return <AuthScreen onAuthed={setUser} />;
@@ -9337,7 +9364,7 @@ function MaintEnhanceAppInner() {
     dashboard: <Dashboard data={data} setTab={setTab} role={role} applyFilter={applyFilter} goToOrder={goToOrder} goToRequest={goToRequest} />,
     locations: <LocationsView data={data} update={update} role={role} />,
     assets: <AssetsView data={data} update={update} role={role} goToOrder={goToOrder} deepLinkAssetId={tab === "assets" ? deepLinkAssetId.current : null} onConsumeDeepLink={consumeDeepLinkAsset} onNewOrderForAsset={goToNewOrderForAsset} />,
-    requests: <WorkRequestsView data={data} update={update} role={role} currentUser={user.username} goToOrder={goToOrder} pendingFilter={tab === "requests" ? pendingFilter : null} consumeFilter={() => setPendingFilter(null)} isOnline={isOnline} queueWorkRequest={queueWorkRequest} />,
+    requests: <WorkRequestsView data={data} update={update} role={role} currentUser={user.username} goToOrder={goToOrder} focusId={tab === "requests" ? focusRequestId : null} consumeFocus={() => setFocusRequestId(null)} pendingFilter={tab === "requests" ? pendingFilter : null} consumeFilter={() => setPendingFilter(null)} isOnline={isOnline} queueWorkRequest={queueWorkRequest} />,
     orders: <WorkOrdersView data={data} update={update} role={role} currentUser={user.username} currentUserId={user.id} openId={openOrderId} setOpenId={setOpenOrderId} pendingFilter={tab === "orders" ? pendingFilter : null} consumeFilter={() => setPendingFilter(null)} prefillOrder={tab === "orders" ? prefillOrder : null} consumePrefill={() => setPrefillOrder(null)} />,
     schedule: execOn()
       ? <PlanningCalendar key="labour" kind="labour" data={data} update={update} role={role} currentUserId={user.id} goToOrder={goToOrder} />

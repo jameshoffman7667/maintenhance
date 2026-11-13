@@ -47,7 +47,7 @@ test("a newly assigned executor is told, the person who assigned is not", async 
   push.diffAndNotify({ workOrders: [wo("w1")] }, { workOrders: [wo("w1", { executorIds: ["e1", "o1"] })] }, "o1");
   await wait();
   assert.strictEqual(sent.length, 1);
-  assert.ok(sent[0].endpoint.includes("/e1/")); assert.strictEqual(sent[0].title, "Assigned to you"); assert.match(sent[0].body, /#1 Fix sink/);
+  assert.ok(sent[0].endpoint.includes("/e1/")); assert.strictEqual(sent[0].title, "Assigned to you"); assert.strictEqual(sent[0].url, "#open/wo/w1"); assert.match(sent[0].body, /#1 Fix sink/);
 });
 
 test("already-assigned people and closed work orders are not re-notified", async () => {
@@ -62,7 +62,7 @@ test("a new work request goes to Owners and Managers (not the sender, not Execut
   push.diffAndNotify({ workOrders: [], workRequests: [] }, { workOrders: [], workRequests: [{ id: "r1", title: "Leaky tap" }] }, "o1");
   await wait();
   assert.deepStrictEqual(sent.map((s) => s.endpoint.split("/")[3]), ["m1"]);
-  assert.strictEqual(sent[0].title, "New work request");
+  assert.strictEqual(sent[0].title, "New work request"); assert.strictEqual(sent[0].url, "#open/req/r1");
 });
 
 test("alarms go to Owners and Managers", async () => {
@@ -70,7 +70,7 @@ test("alarms go to Owners and Managers", async () => {
   push.notifyAlarm({ id: "a1", message: "Sump pump high water", severity: "critical" });
   await wait();
   assert.deepStrictEqual(sent.map((s) => s.endpoint.split("/")[3]).sort(), ["m1", "o1"]);
-  assert.strictEqual(sent[0].title, "Critical alarm");
+  assert.strictEqual(sent[0].title, "Critical alarm"); assert.strictEqual(sent[0].url, "#open/alarms");
 });
 
 test("a person who switched an event off does not get it", async () => {
@@ -94,7 +94,7 @@ test("due sweep: once per work order and state, none overnight, only open work o
   const at = (h) => new Date(2026, 10, 13, h, 0, 0);
   assert.strictEqual(await push.dueSweep(at(3), data), 0);        // overnight
   assert.strictEqual(await push.dueSweep(at(9), data), 1);        // w1 is overdue
-  assert.strictEqual(sent[0].title, "Overdue");
+  assert.strictEqual(sent[0].title, "Overdue"); assert.strictEqual(sent[0].url, "#open/wo/w1");
   assert.strictEqual(await push.dueSweep(at(10), data), 0);       // already told
   data.workOrders[1].requiredByDate = "2026-11-14";               // now due tomorrow
   assert.strictEqual(await push.dueSweep(at(11), data), 1);

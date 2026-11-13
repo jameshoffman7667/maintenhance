@@ -39,3 +39,12 @@ export function setNavHandler(fn) { install(); navHandler = fn; }
 export function pushNav(state) { try { window.history.pushState({ me: "nav", ...state }, ""); } catch (e) { /* ignore */ } }
 export function replaceNav(state) { try { window.history.replaceState({ me: "nav", ...state }, ""); } catch (e) { /* ignore */ } }
 export const _layerCount = () => layers.length; // for tests
+
+// v2.13: links carried by push notifications. "#open/wo/<id>", "#open/req/<id>" or "#open/alarms".
+export function parseOpenLink(hash) {
+  const m = /^#open\/(wo|req|alarms)(?:\/([^/?#]+))?/.exec(hash || "");
+  if (!m) return null;
+  const id = m[2] ? decodeURIComponent(m[2]) : null;
+  if ((m[1] === "wo" || m[1] === "req") && !id) return null;
+  return { kind: m[1], id };
+}

@@ -443,12 +443,12 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 
 ### 3.39 Push notifications (v2.12)
 - Web Push (VAPID) to the browser, the installed web app and the Android app. Each user turns it on per device in Settings -> Push notifications (permission prompt; up to 10 devices per user), can send a test, and switches four events on or off: **assigned** (a work order is assigned to me; not sent to the person who assigned it), **due** (my open work order is due within a day or overdue; checked every 5 minutes, only 07:00-21:00 server time, once per work order and state), **alarm** and **request** (Owners and Managers only: an alarm is raised; a new work request is submitted, not sent to the sender). Guests get none.
-- Messages carry a short title and text only; they pass through the browser vendor's push service (Google for Chrome and Android). Tapping one opens the app.
+- Messages carry a short title and text only; they pass through the browser vendor's push service (Google for Chrome and Android). Tapping one opens the item it is about (v2.13): an assigned, due or overdue work order opens its detail pop-up; a new work request opens the Requests screen scrolled to that request with filters cleared and a short highlight (requests have no detail view); an alarm opens the Alarms screen. The links are `#open/wo/<id>`, `#open/req/<id>` and `#open/alarms`; the app clears the link after using it, and an unknown id opens nothing. If the app is already open the service worker hands the link to the open window instead of reloading it.
 - **Env vars (all optional):** `PUSH_ENABLED=false` turns the feature off (the settings card is hidden); `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. When blank, a key pair is generated once and kept in `app_settings`.
 - **Data (schema 11):** table `push_subscriptions` (per device), table `push_sent` (due-alert memory, pruned after 90 days), and four per-user columns `push_assigned`, `push_due`, `push_alarm`, `push_request` (default on). Subscriptions the push service reports as gone (404/410) are deleted.
 - **API:** `GET /api/push/config`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe`, `PUT /api/push/prefs`, `POST /api/push/test` (signed-in users).
 - **Log:** one line per send, `push_sent event=... sent=... expired=... failed=...`, no message text.
-- **Limits:** no iOS app; no deep link (tapping opens the app root); tested with a mock sender and real encryption, not on a real phone yet.
+- **Limits:** no iOS app; tested with a mock sender and real encryption, not on a real phone yet.
 
 ## 4. Non-Functional Requirements
 

@@ -82,17 +82,17 @@ function diffAndNotify(oldData, newData, actorId) {
     if (!isOpenWo(w)) continue;
     const before = new Set(oldWos.has(w.id) ? execIds(oldWos.get(w.id)) : []);
     const fresh = execIds(w).filter((id) => !before.has(id) && id !== actor);
-    if (fresh.length) fire(fresh, "assigned", { title: "Assigned to you", body: `#${w.number} ${w.title}`, tag: `wo-${w.id}` });
+    if (fresh.length) fire(fresh, "assigned", { title: "Assigned to you", body: `#${w.number} ${w.title}`, tag: `wo-${w.id}`, url: `#open/wo/${w.id}` });
   }
   const oldReq = new Set(((oldData && oldData.workRequests) || []).map((r) => r.id));
   const newReqs = (newData.workRequests || []).filter((r) => !oldReq.has(r.id));
   if (newReqs.length && oldData) {
     const to = adminIds().filter((id) => String(id) !== actor);
-    for (const r of newReqs.slice(0, 3)) fire(to, "request", { title: "New work request", body: String(r.title || r.description || "A new request was submitted"), tag: `req-${r.id}` });
+    for (const r of newReqs.slice(0, 3)) fire(to, "request", { title: "New work request", body: String(r.title || r.description || "A new request was submitted"), tag: `req-${r.id}`, url: `#open/req/${r.id}` });
   }
 }
 function notifyAlarm(alarm) {
-  fire(adminIds(), "alarm", { title: alarm.severity === "critical" ? "Critical alarm" : "Alarm", body: String(alarm.message || "An alarm was raised"), tag: `alarm-${alarm.id}` });
+  fire(adminIds(), "alarm", { title: alarm.severity === "critical" ? "Critical alarm" : "Alarm", body: String(alarm.message || "An alarm was raised"), tag: `alarm-${alarm.id}`, url: "#open/alarms" });
 }
 
 /* ---- due / overdue sweep: each work order tells each assignee once per state ---- */
@@ -115,7 +115,7 @@ async function dueSweep(now = new Date(), data = null) {
       const key = `${state}:${w.id}:${uid}`;
       if (db.prepare("SELECT 1 FROM push_sent WHERE key = ?").get(key)) continue;
       db.prepare("INSERT OR IGNORE INTO push_sent (key, sent_at) VALUES (?, ?)").run(key, now.toISOString());
-      n += await notify([uid], "due", { title: state === "overdue" ? "Overdue" : day === today ? "Due today" : "Due tomorrow", body: `#${w.number} ${w.title}`, tag: `due-${w.id}` });
+      n += await notify([uid], "due", { title: state === "overdue" ? "Overdue" : day === today ? "Due today" : "Due tomorrow", body: `#${w.number} ${w.title}`, tag: `due-${w.id}`, url: `#open/wo/${w.id}` });
     }
   }
   db.prepare("DELETE FROM push_sent WHERE sent_at < ?").run(new Date(now.getTime() - 90 * 86400000).toISOString());

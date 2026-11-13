@@ -2,14 +2,9 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.12.0
+Current release: v2.13.0
 
 ## Pending
-
-### P-30 - Tapping a notification opens the specific item
-Requested: 2026-11-12 (James: "can tapping the notification not open the specific item that triggered it?")
-Type: minor (extends P-29)        Status: Pending
-Notes / questions: yes, feasible. Each push already has a `url` field and the service worker already focuses or opens the app; the missing parts are (1) the server filling `url` per event (work order id for assigned and due, the request id for a new request, the alarm id for an alarm), (2) the service worker passing that link to an already-open app window, (3) the app reading the link on start and opening the work order pop-up, the requests screen or the alarms screen. Work orders open directly; requests and alarms open their screen (no single-item view exists for them today). Question: for a new request, is opening the Requests screen enough, or should it open that request's detail? Works in the browser, installed web app and Android app (the Android app opens its start URL, so the app handles the link itself). Needs the 2.12.0 push code deployed first.
 
 ### P-17 - Cloudflare Access check and two-step sign-in decision
 Requested: 2026-11-07 (logged by Claude while building P-14, not requested by James)
@@ -22,6 +17,12 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-30 - Tapping a notification opens the specific item
+Requested: 2026-11-12 (James: "can tapping the notification not open the specific item that triggered it?")
+Type: minor (extends P-29)        Status: Built in v2.13.0
+Notes / questions: yes, feasible. Each push already has a `url` field and the service worker already focuses or opens the app; the missing parts are (1) the server filling `url` per event (work order id for assigned and due, the request id for a new request, the alarm id for an alarm), (2) the service worker passing that link to an already-open app window, (3) the app reading the link on start and opening the work order pop-up, the requests screen or the alarms screen. Work orders open directly; requests and alarms open their screen (no single-item view exists for them today). Question: for a new request, is opening the Requests screen enough, or should it open that request's detail? Works in the browser, installed web app and Android app (the Android app opens its start URL, so the app handles the link itself). Needs the 2.12.0 push code deployed first.
+Built: James chose "open detail where possible". Work orders open their detail pop-up; a request scrolls into view with filters cleared and a highlight for 4 seconds (requests have no detail view); alarms open the Alarms screen. Links are `#open/wo/<id>`, `#open/req/<id>`, `#open/alarms`. Checked in headless Chromium for a fresh start and an already-open app; not on a real phone.
 
 ### P-29 - Push notifications (browser, installed web app and Android app)
 Requested: 2026-11-12 (James: "will push notifications now work with it installed as a native apk?")

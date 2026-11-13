@@ -41,3 +41,11 @@ test("closing a pop-up in the page removes its history entry without a screen ch
   assert.deepStrictEqual(seen, []); assert.strictEqual(window.history.state.tab, "assets");
   assert.strictEqual(nav._layerCount(), 0);
 });
+
+test("notification links parse to what the app opens", async () => {
+  const { parseOpenLink } = await import("../../frontend/src/backNav.js?c");
+  assert.deepStrictEqual(parseOpenLink("#open/wo/abc-1"), { kind: "wo", id: "abc-1" });
+  assert.deepStrictEqual(parseOpenLink("#open/req/r%201"), { kind: "req", id: "r 1" });
+  assert.deepStrictEqual(parseOpenLink("#open/alarms"), { kind: "alarms", id: null });
+  for (const bad of ["", "#asset/1", "#open/wo", "#open/req/", "#open/other/1", null]) assert.strictEqual(parseOpenLink(bad), null);
+});

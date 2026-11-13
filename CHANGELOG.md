@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.13.0 - 2026-11-12
+**Short:** Open the item from a tapped push notification
+**Long:** Tapping a push notification now opens the work order (assigned, due, overdue) or the new work request (scrolled to and highlighted), or the Alarms screen. Works when the app is closed or already open (P-30).
+
 ## v2.12.0 - 2026-11-12
 **Short:** Add Back button navigation and push alerts
 **Long:** Back now closes pop-ups, then returns to the previous screen (web, PWA, Android). New opt-in push notifications: assigned, due or overdue, alarms, new requests; per-user toggles. Android app notifications on (P-28, P-29).

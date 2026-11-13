@@ -7,14 +7,14 @@
 //   cached shell is used, and if that is missing the offline page.
 // - The cache name carries the app version; old caches are deleted on
 //   activate.
-// - Shows push notifications and focuses/opens the app when one is tapped (v2.12).
+// - Shows push notifications and focuses/opens the app when one is tapped (v2.12) and opens the item it is about (v2.13).
 // - A new worker waits until the person taps "Reload" in the update prompt
 //   (the page sends SKIP_WAITING); it never takes over in the middle of a form.
 //
 // Paths are computed from the worker's scope so this also works under a
 // subpath (for example /maintenhance/).
 const SCOPE = self.registration.scope;
-const CACHE_NAME = "maintenhance-shell-v2.12.0";
+const CACHE_NAME = "maintenhance-shell-v2.13.0";
 const SHELL_URLS = ["", "index.html", "offline.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"].map(
   (p) => new URL(p, SCOPE).toString()
 );
@@ -46,7 +46,7 @@ self.addEventListener("push", (event) => {
       tag: d.tag || undefined,
       icon: new URL("icon-192.png", SCOPE).toString(),
       badge: new URL("icon-192.png", SCOPE).toString(),
-      data: { url: d.url || SCOPE },
+      data: { url: new URL(d.url || "", SCOPE).toString() },
     })
   );
 });
@@ -55,7 +55,13 @@ self.addEventListener("notificationclick", (event) => {
   const target = (event.notification.data && event.notification.data.url) || SCOPE;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) if (c.url.startsWith(SCOPE) && "focus" in c) return c.focus();
+      const hash = new URL(target).hash;
+      for (const c of list) {
+        if (c.url.startsWith(SCOPE) && "focus" in c) {
+          // v2.13: hand the link to the open app window, which opens the item.
+          return c.focus().then((fc) => { (fc || c).postMessage({ type: "open", hash }); });
+        }
+      }
       return self.clients.openWindow(target);
     })
   );
