@@ -14,12 +14,24 @@ name: release
 #
 # Jobs: prepare (detect + validate) -> image (Docker Hub + GitHub release) -> android
 # (v2.11, Bubblewrap TWA: builds maintenhance-<version>.apk and uploads it to the release).
-# A failed android job leaves the image, release and tag as they are: fix it with a patch release.
+# A failed android job leaves the image, release and tag as they are: fix it with a patch release,
+# or rebuild just the APK of an existing release by hand (Actions -> release -> Run workflow, or
+# `gh api -X POST repos/<owner>/<repo>/actions/workflows/release.yml/dispatches -f ref=main
+# -f 'inputs[tag]=vX.Y.Z' -f 'inputs[overwrite]=false'`). A manual run never builds the image or touches a tag.
 on:
   push:
     branches: ["main"]
     paths: ["backend/package.json"]
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag whose APK to (re)build, e.g. v2.13.0"
+        required: true
+      overwrite:
+        description: "Replace an APK already attached to that release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,6 +42,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.detect.outputs.release }}
@@ -104,7 +117,7 @@ jobs:
 
   image:
     needs: prepare
-    if: needs.prepare.outputs.release == 'true'
+    if: github.event_name != 'workflow_dispatch' && needs.prepare.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -152,13 +165,37 @@ jobs:
 
   android:
     needs: [prepare, image]
-    if: needs.prepare.outputs.release == 'true'
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.prepare.outputs.release == 'true' && needs.image.result == 'success')) }}
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.prepare.outputs.version }}
       GH_TOKEN: ${{ github.token }}
+      OVERWRITE: ${{ github.event_name == 'workflow_dispatch' && inputs.overwrite || 'false' }}
     steps:
+      # A manual run names an existing release tag; a normal run uses the version the prepare job found.
+      - name: Work out the version and tag
+        id: ver
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PREPARED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag '$TAG' must look like v2.13.0"; exit 1; }
+            gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null || { echo "::error::There is no GitHub release for $TAG"; exit 1; }
+            VERSION="${TAG#v}"
+          else
+            VERSION="$PREPARED_VERSION"; TAG="v$VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building the APK for $TAG (version $VERSION)"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ver.outputs.tag }}
 
       # Skips (green, with a notice) until the repo has twa-manifest.json and James has added the
       # four ANDROID_* secrets, so a release never fails only because the key does not exist yet.
@@ -173,9 +210,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f twa-manifest.json ]; then echo "::notice::No twa-manifest.json: Android build skipped"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          MISSING=""
           for v in KEYSTORE_B64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "${!v}" ]; then echo "::notice::Secret ANDROID_$v is not set: Android build skipped"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+            if [ -z "${!v}" ]; then MISSING="$MISSING ANDROID_$v"; fi
           done
+          if [ -n "$MISSING" ]; then echo "::notice::Missing secrets:$MISSING. Android build skipped"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           echo "build=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
@@ -197,12 +236,21 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
           VERSION_CODE="$(node scripts/android-version.js "$VERSION")"
           echo "versionName=$VERSION versionCode=$VERSION_CODE"
           npm install -g @bubblewrap/cli@1
           printf %s "$KEYSTORE_B64" | base64 -d > android.keystore
+          # The key must be the one named in assetlinks.json, or phones will not trust the app as full screen.
+          FP="$(keytool -list -v -keystore android.keystore -alias "$KEY_ALIAS" -storepass:env BUBBLEWRAP_KEYSTORE_PASSWORD | awk '/SHA256:/ {print $2; exit}')"
+          [ -n "$FP" ] || { echo "::error::Could not read the certificate fingerprint from the keystore (wrong alias or password?)"; rm -f android.keystore; exit 1; }
+          if ! grep -Fqi "$FP" backend/assetlinks.json; then
+            echo "::error::The signing key's fingerprint ($FP) is not in backend/assetlinks.json: update assetlinks.json or fix the secrets"
+            rm -f android.keystore; exit 1
+          fi
+          echo "Signing key fingerprint matches backend/assetlinks.json"
           # point Bubblewrap at the runner's JDK and Android SDK so it does not ask to download them
           mkdir -p "$HOME/.bubblewrap"
           printf '{"jdkPath":"%s","androidSdkPath":"%s"}' "$JAVA_HOME" "$ANDROID_HOME" > "$HOME/.bubblewrap/config.json"
@@ -230,6 +278,41 @@ jobs:
           mv app-release-signed.apk "maintenhance-$VERSION.apk"
           rm -f android.keystore
 
+      - name: Inspect the APK
+        if: steps.gate.outputs.build == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q androguard
+          "$RUNNER_TEMP/venv/bin/python" - "maintenhance-$VERSION.apk" <<'PY'
+          import json, sys
+          from androguard.core.apk import APK
+          apk = APK(sys.argv[1])
+          want = json.load(open("twa-manifest.json"))["packageId"]
+          pkg = apk.get_package()
+          assert pkg == want, f"package {pkg} != twa-manifest.json packageId {want}"
+          assert apk.is_signed(), "the APK is not signed"
+          min_sdk = int(apk.get_min_sdk_version() or 0)
+          assert min_sdk >= 24, f"minSdk {min_sdk} is below 24"
+          print(f"package={pkg} versionName={apk.get_androidversion_name()} versionCode={apk.get_androidversion_code()} minSdk={min_sdk} signed=True")
+          PY
+
       - name: Attach the APK to the GitHub release
         if: steps.gate.outputs.build == 'true'
-        run: gh release upload "v$VERSION" "maintenhance-$VERSION.apk" --clobber
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "maintenhance-$VERSION.apk"; then
+            if [ "$OVERWRITE" != "true" ]; then
+              echo "::error::maintenhance-$VERSION.apk is already attached to $TAG; re-run with overwrite=true only if the APK was never installed or downloaded"
+              exit 1
+            fi
+            echo "::warning::Replacing the APK already attached to $TAG. Phones that installed the old one will not see this as an update (same versionCode)."
+          fi
+          gh release upload "$TAG" "maintenhance-$VERSION.apk" --clobber

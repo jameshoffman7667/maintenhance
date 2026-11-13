@@ -18,6 +18,11 @@ Notes / questions: Mobile performance scored 61 (largest paint 7 s on the thrott
 
 ## Done
 
+### P-31 - Android workflow improvements (manual rebuild, safety checks)
+Requested: 2026-11-13 (James's build message: adopt the new Android workflow improvements from spec v1.11)
+Type: workflow and tests only (no version bump, no release)        Status: Built (workflow and tests only; no release)
+Notes / questions: added `workflow_dispatch` (tag, overwrite), skipping prepare and image on manual runs; version and tag step; checkout of that tag; all missing secrets listed; keystore fingerprint check against assetlinks.json; APK inspection with androguard; overwrite guard on the upload. Tests extended (59 pass). Verified by a manual run against v2.13.0 with overwrite=false (result in the release report).
+
 ### P-30 - Tapping a notification opens the specific item
 Requested: 2026-11-12 (James: "can tapping the notification not open the specific item that triggered it?")
 Type: minor (extends P-29)        Status: Built in v2.13.0

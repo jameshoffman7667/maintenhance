@@ -68,3 +68,23 @@ test("release workflow has prepare, image and android jobs in order", () => {
   assert.match(w, /\n  prepare:/); assert.match(w, /\n  image:\n    needs: prepare/); assert.match(w, /\n  android:\n    needs: \[prepare, image\]/);
   assert.match(w, /twa-manifest\.json/); assert.match(w, /gh release upload/);
 });
+
+test("release workflow has the manual rebuild path and the overwrite guard (workflow-only change after v2.13)", () => {
+  const w = fs.readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
+  assert.match(w, /\n  workflow_dispatch:/); assert.match(w, /overwrite/);
+  assert.ok(w.includes("github.event_name != 'workflow_dispatch'"));
+  assert.ok((w.match(/github\.event_name != 'workflow_dispatch'/g) || []).length >= 2, "prepare and image are skipped on a manual run");
+  assert.match(w, /already attached/); assert.match(w, /--clobber/);
+  assert.match(w, /Missing secrets:/); assert.match(w, /assetlinks\.json/); assert.match(w, /androguard/);
+  assert.match(w, /ref: \$\{\{ steps\.ver\.outputs\.tag \}\}/);
+});
+
+test("assetlinks.json fingerprints look like real SHA-256 fingerprints (32 hex pairs, 31 colons)", () => {
+  const j = JSON.parse(fs.readFileSync(path.join(root, "backend/assetlinks.json"), "utf8"));
+  const fps = j[0].target.sha256_cert_fingerprints;
+  assert.ok(fps.length >= 1);
+  for (const fp of fps) {
+    assert.strictEqual((fp.match(/:/g) || []).length, 31, fp);
+    assert.match(fp, /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+  }
+});
