@@ -10,7 +10,7 @@ services:
     # alone) never needs the Dockerfile or source tree, just Docker
     # Hub access. To build the image yourself instead of waiting on
     # CI, see "Prebuilding the image" in README.md.
-    image: mybadreligon/maintenhance:2.11.4
+    image: mybadreligon/maintenhance:2.11.5
     container_name: maintenhance
     restart: unless-stopped
     environment:

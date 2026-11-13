@@ -221,6 +221,11 @@ jobs:
           ' "$VERSION_CODE"
           # generate the Android project from twa-manifest.json (also writes manifest-checksum.txt) without prompting
           bubblewrap update --skipVersionUpgrade < /dev/null
+          # The generated project shrinks the code with R8 (minifyEnabled true), which renames a class the
+          # Android package manager looks up by its original name, so the app crashed at start on a real phone
+          # ("Component class R.u does not exist"). Turn shrinking off; the APK is only slightly larger.
+          sed -i 's/minifyEnabled true/minifyEnabled false/' app/build.gradle
+          grep -q 'minifyEnabled false' app/build.gradle
           bubblewrap build --skipPwaValidation < /dev/null
           mv app-release-signed.apk "maintenhance-$VERSION.apk"
           rm -f android.keystore

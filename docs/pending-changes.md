@@ -2,7 +2,7 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.11.4
+Current release: v2.11.5
 
 ## Pending
 
@@ -17,6 +17,11 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-26 - Fix the Android app crash at start
+Requested: 2026-11-12 (James's phone showed "closed because this app has a bug"; logcat: IllegalArgumentException Component class R.u does not exist)
+Type: patch (workflow)        Status: Built in v2.11.5
+Notes / questions: R8 shrinking (minifyEnabled true in the Bubblewrap template) renamed a component class. Shrinking is now turned off in the workflow. Needs James to confirm on his phone. Update: later.
 
 ### P-25 - Android minimum SDK 24
 Requested: 2026-11-11 (logged by Claude: the 2.11.3 android job failed in Gradle, "minSdkVersion 21 cannot be smaller than version 24")
