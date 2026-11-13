@@ -6,6 +6,16 @@ Current release: v2.11.6
 
 ## Pending
 
+### P-28 - Back button goes to the previous page inside the app
+Requested: 2026-11-12 (James: "make the back button on android (and pc) go back to the last page within the app, whether installed as an apk, pwa or on the web")
+Type: minor (navigation change)        Status: Pending
+Notes / questions: today the app keeps its screen in memory and does not use the browser history, so Back leaves the app (or closes the Android app). Plan: record each screen change (list, record, tab, open dialog or form) in the browser history and restore it on Back/Forward; the same code works in the browser, the installed web app and the Android app. Questions: (1) should an open pop-up or form close first on Back, then the screen behind it? (recommended yes); (2) on the first screen, Back keeps its normal behaviour (leaves or closes the app); OK? Touches most of the app's navigation, so it needs a full click-through test at phone and desktop widths.
+
+### P-29 - Push notifications (browser, installed web app and Android app)
+Requested: 2026-11-12 (James: "will push notifications now work with it installed as a native apk?")
+Type: minor (new feature)        Status: Pending
+Notes / questions: not built; the app sends email digests only today. Not included in the Android pilot (out of scope in spec section 15). Web Push would work in the browser, the installed web app and the Android app (the Android app needs `enableNotifications: true` in twa-manifest.json, plus a new APK). Needs: a VAPID key pair (server env vars, names only), a subscriptions table, a service-worker push handler, a per-user on/off setting with a permission prompt, and the server sending pushes. Questions: (1) which events (work order assigned to me, due soon or overdue, alarm raised, new work request)? (2) per-user toggles per event, like the email toggles? (3) the push contents will pass through Google or the phone vendor's push service (title and short text only), acceptable? Needs the Cloudflare Access bypass for the service worker, already in place. No iOS.
+
 ### P-17 - Cloudflare Access check and two-step sign-in decision
 Requested: 2026-11-07 (logged by Claude while building P-14, not requested by James)
 Type: minor        Status: Pending
