@@ -15,6 +15,7 @@ import QRCode from "qrcode";
 import { api } from "./api.js";
 import { shrinkImage } from "./imageShrink.js";
 import { PM_CATALOG_DEFAULT } from "./pmCatalog.js";
+import { pushLayer, setNavHandler, pushNav, replaceNav } from "./backNav.js";
 import { queueItem, getQueuedItems, removeQueuedItem, updateQueuedItem } from "./offlineQueue.js";
 
 /* ============================================================
@@ -942,6 +943,10 @@ function Btn({ children, onClick, variant, small, type, disabled, title }) {
 }
 
 function Modal({ title, onClose, children, wide, info }) {
+  // v2.12: Back closes the pop-up first (history layer).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => pushLayer(() => closeRef.current && closeRef.current()), []);
   return (
     <div
       className="hk-modal-overlay"
@@ -8834,6 +8839,76 @@ async function avatarFromFile(file) {
   bmp.close && bmp.close();
   return canvas.toDataURL("image/jpeg", 0.82);
 }
+// v2.12: push notifications for this device, plus which events each person gets.
+function urlB64ToUint8Array(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+const PUSH_EVENTS = [
+  { key: "assigned", label: "A work order is assigned to me", admin: false },
+  { key: "due", label: "One of my work orders is due within a day or overdue", admin: false },
+  { key: "alarm", label: "An alarm is raised", admin: true },
+  { key: "request", label: "A new work request is submitted", admin: true },
+];
+function PushSettings({ user }) {
+  const [cfg, setCfg] = useState(null);
+  const [here, setHere] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const load = async () => {
+    try { setCfg(await api.pushConfig()); } catch (e) { setCfg(null); return; }
+    if (supported) { try { const reg = await navigator.serviceWorker.ready; setHere(!!(await reg.pushManager.getSubscription())); } catch (e) { /* ignore */ } }
+  };
+  useEffect(() => { load(); }, []);
+  if (!cfg || !cfg.enabled || user.role === "Guest") return null;
+  const admin = user.role === "Owner" || user.role === "Manager";
+  const turnOn = async () => {
+    setBusy(true); setMsg("");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { setMsg("Notifications are blocked for this app. Allow them in your browser or phone settings, then try again."); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(cfg.publicKey) }));
+      await api.pushSubscribe(sub.toJSON());
+      setHere(true); setMsg("Notifications are on for this device."); await load();
+    } catch (e) { setMsg(e.message || "Could not turn notifications on."); } finally { setBusy(false); }
+  };
+  const turnOff = async () => {
+    setBusy(true); setMsg("");
+    try {
+      const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription();
+      if (sub) { await api.pushUnsubscribe(sub.endpoint); await sub.unsubscribe(); }
+      setHere(false); setMsg("Notifications are off for this device."); await load();
+    } catch (e) { setMsg(e.message || "Could not turn notifications off."); } finally { setBusy(false); }
+  };
+  const setPref = async (k, v) => { try { const r = await api.pushPrefs({ [k]: v }); setCfg((c) => ({ ...c, prefs: r.prefs })); } catch (e) { setMsg(e.message); } };
+  const test = async () => { setBusy(true); setMsg(""); try { const r = await api.pushTest(); setMsg(r.sent ? "Test sent. It should appear in a moment." : "Nothing was sent. Check that notifications are on for this device."); } catch (e) { setMsg(e.message); } finally { setBusy(false); } };
+  return (
+    <div id="tools-push">
+      <div style={{ fontFamily: FONT_HEAD, fontSize: 13, fontWeight: 600, color: C.ink, margin: "4px 0 6px" }}>Push notifications</div>
+      <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: C.inkFaint, marginBottom: 8 }}>
+        A short alert on this device, even when the app is closed. Each device is turned on separately. Only a short title and line of text are sent, through your browser or phone maker's push service.
+      </div>
+      {!supported && <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: C.inkSoft, marginBottom: 8 }}>This browser can't receive push notifications. On an iPhone, install the app to your home screen first.</div>}
+      {supported && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {!here ? <Btn variant="primary" small disabled={busy} onClick={turnOn}>Turn on for this device</Btn> : <Btn variant="ghost" small disabled={busy} onClick={turnOff}>Turn off for this device</Btn>}
+          {here && <Btn variant="ghost" small disabled={busy} onClick={test}>Send a test</Btn>}
+        </div>
+      )}
+      {PUSH_EVENTS.filter((o) => admin || !o.admin).map((o) => (
+        <label key={o.key} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8, fontFamily: FONT_BODY, fontSize: 12.5, color: C.ink, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!cfg.prefs[o.key]} onChange={(e) => setPref(o.key, e.target.checked)} style={{ marginTop: 2 }} />
+          <span>{o.label}</span>
+        </label>
+      ))}
+      {msg && <div role="status" style={{ fontFamily: FONT_BODY, fontSize: 12, color: C.inkSoft, marginTop: 4 }}>{msg}</div>}
+      <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: C.inkFaint, marginTop: 4 }}>{cfg.devices.length} device{cfg.devices.length === 1 ? "" : "s"} on for your account. Due and overdue alerts are sent between 7:00 and 21:00 (server time), once per work order.</div>
+    </div>
+  );
+}
 function DigestSettings({ user, onSave, mailOk }) {
   const opts = DIGEST_OPTIONS.filter((o) => digestAllowed(user, o));
   const [busy, setBusy] = useState("");
@@ -8950,6 +9025,7 @@ function MyAccountCard({ user, onUserChanged, theme, setTheme, installPrompt, do
       </div>
 
       <div style={rule}><DigestSettings user={user} onSave={patch} mailOk={!!SETTINGS.mailConfigured} /></div>
+      <div style={rule}><PushSettings user={user} /></div>
 
       <div style={rule}>
         <div style={sub}>Appearance and app</div>
@@ -9217,12 +9293,24 @@ function MaintEnhanceAppInner() {
     return () => clearInterval(interval);
   }, [user]); // eslint-disable-line
 
-  const setTab = (t) => { setTabRaw(t); setOpenOrderId(null); setPendingFilter(null); };
-  const applyFilter = (t, filter) => { setTabRaw(t); setOpenOrderId(null); setPendingFilter(filter); };
-  const goToOrder = (id) => { setTabRaw("orders"); setOpenOrderId(id); setPendingFilter(null); };
-  const goToRequest = (id) => { setTabRaw("requests"); setPendingFilter(null); };
+  // v2.12: each screen (tab) change is recorded in the browser history so Back/Forward move between screens.
+  const curTab = useRef(tab);
+  const navTab = (t) => { if (t !== curTab.current) pushNav({ tab: t }); curTab.current = t; setTabRaw(t); };
+  useEffect(() => {
+    replaceNav({ tab: curTab.current });
+    setNavHandler((st) => { curTab.current = st.tab; setTabRaw(st.tab); setOpenOrderId(null); setPendingFilter(null); });
+  }, []); // eslint-disable-line
+  // The phone menu drawer is a layer too: Back closes it first.
+  useEffect(() => {
+    if (!sidebarOpen || typeof window === "undefined" || window.innerWidth > 767) return undefined;
+    return pushLayer(() => setSidebarOpen(false));
+  }, [sidebarOpen]);
+  const setTab = (t) => { navTab(t); setOpenOrderId(null); setPendingFilter(null); };
+  const applyFilter = (t, filter) => { navTab(t); setOpenOrderId(null); setPendingFilter(filter); };
+  const goToOrder = (id) => { navTab("orders"); setOpenOrderId(id); setPendingFilter(null); };
+  const goToRequest = (id) => { navTab("requests"); setPendingFilter(null); };
   const goToNewOrderForAsset = (asset) => {
-    setTabRaw("orders"); setOpenOrderId(null); setPendingFilter(null);
+    navTab("orders"); setOpenOrderId(null); setPendingFilter(null);
     setPrefillOrder({ assetId: asset.id, locationId: asset.locationId });
   };
   const consumeDeepLinkAsset = () => { deepLinkAssetId.current = null; };

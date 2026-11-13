@@ -7,13 +7,14 @@
 //   cached shell is used, and if that is missing the offline page.
 // - The cache name carries the app version; old caches are deleted on
 //   activate.
+// - Shows push notifications and focuses/opens the app when one is tapped (v2.12).
 // - A new worker waits until the person taps "Reload" in the update prompt
 //   (the page sends SKIP_WAITING); it never takes over in the middle of a form.
 //
 // Paths are computed from the worker's scope so this also works under a
 // subpath (for example /maintenhance/).
 const SCOPE = self.registration.scope;
-const CACHE_NAME = "maintenhance-shell-v2.11.6";
+const CACHE_NAME = "maintenhance-shell-v2.12.0";
 const SHELL_URLS = ["", "index.html", "offline.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"].map(
   (p) => new URL(p, SCOPE).toString()
 );
@@ -33,6 +34,31 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Push notifications (v2.12). A push always shows a notification; tapping it focuses the app or opens it.
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = {}; }
+  event.waitUntil(
+    self.registration.showNotification(d.title || "MaintEnhance", {
+      body: d.body || "",
+      tag: d.tag || undefined,
+      icon: new URL("icon-192.png", SCOPE).toString(),
+      badge: new URL("icon-192.png", SCOPE).toString(),
+      data: { url: d.url || SCOPE },
+    })
+  );
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || SCOPE;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) if (c.url.startsWith(SCOPE) && "focus" in c) return c.focus();
+      return self.clients.openWindow(target);
+    })
+  );
 });
 
 self.addEventListener("fetch", (event) => {

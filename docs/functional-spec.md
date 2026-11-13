@@ -204,7 +204,7 @@ A **PM Base** is a template work order that is never itself scheduled or complet
   - Warranties expiring soon (within a configurable window, default 30 days)
   - Work requests that have sat unreviewed too long (Submitted or Under Review past a configurable window, default 3 days)
 - A member with no email set, or with all three toggles off, simply receives nothing — the feature requires no action from anyone who doesn't want it
-- The digest runs once a day per deployment; it is a summary email, not a per-event push/SMS notification (still a future enhancement — see Section 8)
+- The digest runs once a day per deployment; it is a summary email; per-event push notifications arrived in v2.12 (3.39)
 
 ### 3.8 Vendors and Service Providers
 - **Fill in from a link (v2.3):** the vendor form can fill the name, notes and website from a company web page (same mechanism as 3.2)
@@ -432,7 +432,23 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 - **Signing key:** created and kept by the owner (never in the repo or in chat); the fingerprint is public.
 - **Needs Cloudflare Access bypass** for `/manifest.webmanifest` and `/.well-known/assetlinks.json` (in addition to the existing PWA paths), otherwise the phone cannot verify the app.
 - **Site settings shortcut stays on** (`enableSiteSettingsShortcut: true`): the browser helper library enables its "manage data" activity at start and the app crashes at launch if that activity is not in the manifest.
-- **Out of scope:** push notifications and share targets.
+- **Notifications:** `enableNotifications` is true (v2.12), so the app can show the web push notifications described in 3.39.
+- **Out of scope:** share targets.
+
+### 3.38 Back button navigation (v2.12)
+- Screen changes (tabs, jumps to a work order, request or asset) are recorded in the browser history, so the browser Back and Forward buttons, the Android system Back button and the installed web app's Back all move between screens. Implemented in `frontend/src/backNav.js`; nothing is stored on the server.
+- An open pop-up, form, dialog or the phone menu drawer counts as a layer: Back closes the top layer first, then the screen behind it. Closing a pop-up in the page removes its history entry again.
+- On the first screen Back keeps its normal behaviour (leaves the site or closes the app).
+- **Not covered:** selections inside a page (for example the selected asset, or the calendar month, week or day) are not separate history steps.
+
+### 3.39 Push notifications (v2.12)
+- Web Push (VAPID) to the browser, the installed web app and the Android app. Each user turns it on per device in Settings -> Push notifications (permission prompt; up to 10 devices per user), can send a test, and switches four events on or off: **assigned** (a work order is assigned to me; not sent to the person who assigned it), **due** (my open work order is due within a day or overdue; checked every 5 minutes, only 07:00-21:00 server time, once per work order and state), **alarm** and **request** (Owners and Managers only: an alarm is raised; a new work request is submitted, not sent to the sender). Guests get none.
+- Messages carry a short title and text only; they pass through the browser vendor's push service (Google for Chrome and Android). Tapping one opens the app.
+- **Env vars (all optional):** `PUSH_ENABLED=false` turns the feature off (the settings card is hidden); `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. When blank, a key pair is generated once and kept in `app_settings`.
+- **Data (schema 11):** table `push_subscriptions` (per device), table `push_sent` (due-alert memory, pruned after 90 days), and four per-user columns `push_assigned`, `push_due`, `push_alarm`, `push_request` (default on). Subscriptions the push service reports as gone (404/410) are deleted.
+- **API:** `GET /api/push/config`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe`, `PUT /api/push/prefs`, `POST /api/push/test` (signed-in users).
+- **Log:** one line per send, `push_sent event=... sent=... expired=... failed=...`, no message text.
+- **Limits:** no iOS app; no deep link (tapping opens the app root); tested with a mock sender and real encryption, not on a real phone yet.
 
 ## 4. Non-Functional Requirements
 
@@ -517,7 +533,7 @@ Three Owner toggles under Tools → Features, all default off. With all three of
 
 ## 8. Future Considerations (Not in Initial Release)
 
-- Per-event push/SMS notifications and configurable reminder lead times (a daily opt-in email digest shipped in v1.2 — see 3.7)
+- SMS notifications and configurable reminder lead times (a daily opt-in email digest shipped in v1.2 — see 3.7)
 - Photo/document attachments on assets, BOM nodes, and work orders directly (work request photo attachments, carried over on conversion, shipped in v1.6 — see 3.5)
 - Calendar export (ICS) / sync with external calendars
 - Automatic mileage sync from a connected vehicle or odometer-tracking app

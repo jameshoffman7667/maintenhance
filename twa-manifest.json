@@ -15,7 +15,7 @@
   "startUrl": "/",
   "iconUrl": "https://maintenhance.hoffmanhouse.ca/icon-512.png",
   "maskableIconUrl": "https://maintenhance.hoffmanhouse.ca/icon-512-maskable.png",
-  "enableNotifications": false,
+  "enableNotifications": true,
   "enableSiteSettingsShortcut": true,
   "fallbackType": "customtabs",
   "splashScreenFadeOutDuration": 300,

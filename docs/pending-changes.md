@@ -2,19 +2,9 @@
 
 Requests are logged here and built only when James sends a build message. Entries move from Pending to Done (Built or Dropped) and are never deleted. IDs are never reused.
 
-Current release: v2.11.6
+Current release: v2.12.0
 
 ## Pending
-
-### P-28 - Back button goes to the previous page inside the app
-Requested: 2026-11-12 (James: "make the back button on android (and pc) go back to the last page within the app, whether installed as an apk, pwa or on the web")
-Type: minor (navigation change)        Status: Pending
-Notes / questions: today the app keeps its screen in memory and does not use the browser history, so Back leaves the app (or closes the Android app). Plan: record each screen change (list, record, tab, open dialog or form) in the browser history and restore it on Back/Forward; the same code works in the browser, the installed web app and the Android app. Questions: (1) should an open pop-up or form close first on Back, then the screen behind it? (recommended yes); (2) on the first screen, Back keeps its normal behaviour (leaves or closes the app); OK? Touches most of the app's navigation, so it needs a full click-through test at phone and desktop widths.
-
-### P-29 - Push notifications (browser, installed web app and Android app)
-Requested: 2026-11-12 (James: "will push notifications now work with it installed as a native apk?")
-Type: minor (new feature)        Status: Pending
-Notes / questions: not built; the app sends email digests only today. Not included in the Android pilot (out of scope in spec section 15). Web Push would work in the browser, the installed web app and the Android app (the Android app needs `enableNotifications: true` in twa-manifest.json, plus a new APK). Needs: a VAPID key pair (server env vars, names only), a subscriptions table, a service-worker push handler, a per-user on/off setting with a permission prompt, and the server sending pushes. Questions: (1) which events (work order assigned to me, due soon or overdue, alarm raised, new work request)? (2) per-user toggles per event, like the email toggles? (3) the push contents will pass through Google or the phone vendor's push service (title and short text only), acceptable? Needs the Cloudflare Access bypass for the service worker, already in place. No iOS.
 
 ### P-17 - Cloudflare Access check and two-step sign-in decision
 Requested: 2026-11-07 (logged by Claude while building P-14, not requested by James)
@@ -27,6 +17,18 @@ Type: minor        Status: Pending
 Notes / questions: Mobile performance scored 61 (largest paint 7 s on the throttled test) because all of the app is one 1.1 MB script; split heavy screens and libraries (spreadsheet import, QR codes) so they load on demand. Accessibility scored 89: some form fields have no associated label, some text lacks contrast, and the sign-in page logs one console error. Also: nodemailer has a known advisory whose fix is a major version upgrade, and Google Fonts are loaded from Google (self-hosting them would remove the outside request and tighten the CSP).
 
 ## Done
+
+### P-29 - Push notifications (browser, installed web app and Android app)
+Requested: 2026-11-12 (James: "will push notifications now work with it installed as a native apk?")
+Type: minor (new feature)        Status: Built in v2.12.0
+Notes / questions: not built; the app sends email digests only today. Not included in the Android pilot (out of scope in spec section 15). Web Push would work in the browser, the installed web app and the Android app (the Android app needs `enableNotifications: true` in twa-manifest.json, plus a new APK). Needs: a VAPID key pair (server env vars, names only), a subscriptions table, a service-worker push handler, a per-user on/off setting with a permission prompt, and the server sending pushes. Questions: (1) which events (work order assigned to me, due soon or overdue, alarm raised, new work request)? (2) per-user toggles per event, like the email toggles? (3) the push contents will pass through Google or the phone vendor's push service (title and short text only), acceptable? Needs the Cloudflare Access bypass for the service worker, already in place. No iOS.
+Built: events assigned to me, my work order due within a day or overdue, alarms and new requests (Owner/Manager); per-user toggles; Settings -> Push notifications. Tested with a mock sender and real encryption, not on a real phone. Android app: enableNotifications true (needs the new APK).
+
+### P-28 - Back button goes to the previous page inside the app
+Requested: 2026-11-12 (James: "make the back button on android (and pc) go back to the last page within the app, whether installed as an apk, pwa or on the web")
+Type: minor (navigation change)        Status: Built in v2.12.0
+Notes / questions: today the app keeps its screen in memory and does not use the browser history, so Back leaves the app (or closes the Android app). Plan: record each screen change (list, record, tab, open dialog or form) in the browser history and restore it on Back/Forward; the same code works in the browser, the installed web app and the Android app. Questions: (1) should an open pop-up or form close first on Back, then the screen behind it? (recommended yes); (2) on the first screen, Back keeps its normal behaviour (leaves or closes the app); OK? Touches most of the app's navigation, so it needs a full click-through test at phone and desktop widths.
+Built: Back closes the top pop-up or form first, then returns to the previous screen; on the first screen Back behaves as before. Not covered: selections inside a page (a selected asset, the calendar month/week/day). Tested in a real browser (Playwright) and with unit tests.
 
 ### P-27 - Android crash: ManageDataLauncherActivity missing
 Requested: 2026-11-12 (James's second logcat after 2.11.5: IllegalArgumentException, Component class com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity does not exist)

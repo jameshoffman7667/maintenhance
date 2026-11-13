@@ -459,9 +459,11 @@ The database volume is untouched by any of the above.
 - **Branding (v2.2):** PWA home-screen icons can't be branded yet; only the location hierarchy wording and the word "household" are configurable — other UI copy is fixed.
 
 - **Notifications** are in-app indicators plus an opt-in daily email
-  digest (v1.2, requires SMTP configuration — see Section 6) — no push
-  or SMS yet. Adding push notifications would mean integrating a
-  service like Firebase Cloud Messaging for the Android PWA.
+  digest (v1.2, requires SMTP configuration — see Section 6) and, since
+  v2.12, opt-in push notifications (Settings -> Push notifications; set
+  `PUSH_ENABLED=false` to turn off; keys are generated automatically).
+  No SMS. The browser Back button (and Android Back) steps through
+  screens and closes pop-ups first.
 - **Offline support (v1.6)** covers the app shell (loads while offline)
   plus submitting a **Work Request** with photos while offline — it's
   saved on the device and synced automatically once you're back

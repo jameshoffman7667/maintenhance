@@ -33,7 +33,7 @@ db.pragma("journal_mode = WAL");
 // files, and they are never deleted by the app). A fresh database needs no
 // copy. All migrations are additive, so the previous image still starts on a
 // migrated database.
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 {
   const has = (n) => db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(n);
   let from = 0;
@@ -278,6 +278,29 @@ try {
 // Exposed so server.js can put uploaded attachment files under the same
 // mounted-volume root the database itself lives in (DATA_DIR), without
 // duplicating the env-var-vs-default logic above.
+// v2.12: Web Push. One row per device; per-person on/off for each event; a "already told you" log for due/overdue.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TEXT NOT NULL,
+    last_ok_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS push_sent (key TEXT PRIMARY KEY, sent_at TEXT NOT NULL);
+`);
+try {
+  const ucols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  for (const c of ["push_assigned", "push_due", "push_alarm", "push_request"]) {
+    if (!ucols.includes(c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 1`);
+  }
+} catch (e) {
+  console.error("[maintenhance] push-columns migration failed:", e.message);
+}
+
 // v2.10: record that this database is now at SCHEMA_VERSION.
 db.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)");
 db.transaction(() => {

@@ -120,6 +120,13 @@ export const api = {
     return body;
   },
 
+  // Push notifications (v2.12)
+  pushConfig: () => request("/api/push/config"),
+  pushSubscribe: (subscription) => request("/api/push/subscribe", { method: "POST", body: JSON.stringify({ subscription }) }),
+  pushUnsubscribe: (endpoint) => request("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }),
+  pushPrefs: (prefs) => request("/api/push/prefs", { method: "PUT", body: JSON.stringify(prefs) }),
+  pushTest: () => request("/api/push/test", { method: "POST", body: "{}" }),
+
   getData: () => request("/api/data"),
   saveData: (data) => request("/api/data", { method: "PUT", body: JSON.stringify(data) }),
 

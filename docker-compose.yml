@@ -10,7 +10,7 @@ services:
     # alone) never needs the Dockerfile or source tree, just Docker
     # Hub access. To build the image yourself instead of waiting on
     # CI, see "Prebuilding the image" in README.md.
-    image: mybadreligon/maintenhance:2.11.6
+    image: mybadreligon/maintenhance:2.12.0
     container_name: maintenhance
     restart: unless-stopped
     environment:
@@ -58,6 +58,10 @@ services:
       - AI_MODEL=${AI_MODEL:-}
       - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-}
       - AI_MAX_CONCURRENCY=${AI_MAX_CONCURRENCY:-}
+      - PUSH_ENABLED=${PUSH_ENABLED:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       # Optional (v2.9): email/text intake. See deploy/RELEASE.md. Blank = off.
       - INBOUND_EMAIL_SECRET=${INBOUND_EMAIL_SECRET:-}
       - INBOUND_EMAIL_ADDRESS=${INBOUND_EMAIL_ADDRESS:-}

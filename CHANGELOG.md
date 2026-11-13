@@ -21,6 +21,10 @@ the Git commit's summary line) and a **Commit extended description**
 
 From v2.7.1 onward each entry uses the **Short** / **Long** format required by the release workflow (50 and 250 characters at most, identical to the commit and the GitHub release); older entries keep their original format.
 
+## v2.12.0 - 2026-11-12
+**Short:** Add Back button navigation and push alerts
+**Long:** Back now closes pop-ups, then returns to the previous screen (web, PWA, Android). New opt-in push notifications: assigned, due or overdue, alarms, new requests; per-user toggles. Android app notifications on (P-28, P-29).
+
 ## v2.11.6 - 2026-11-12
 **Short:** Fix Android app crash at start (site settings)
 **Long:** The Android app crashed at start because the browser helper library toggles ManageDataLauncherActivity, which was left out of the manifest. twa-manifest.json now enables the site settings shortcut so it is included (P-27).

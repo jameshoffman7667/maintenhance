@@ -12,6 +12,7 @@ const { FEATURES } = require("./features");
 const settings = require("./settings");
 const prefill = require("./prefill");
 const ai = require("./ai");
+const push = require("./push");
 const { runMigrations } = require("./migrate");
 const backup = require("./backup");
 const crypto = require("crypto");
@@ -610,10 +611,58 @@ app.get("/api/data", requireAuth, (req, res) => {
 app.put("/api/data", requireAuth, (req, res) => {
   const payload = req.body;
   if (!payload || typeof payload !== "object") return res.status(400).json({ error: "Invalid payload" });
+  let before = null;
+  try { const r = db.prepare("SELECT data FROM app_data WHERE id = 1").get(); before = r ? JSON.parse(r.data) : null; } catch (e) { before = null; }
   db.prepare(
     "INSERT INTO app_data (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data"
   ).run(JSON.stringify(payload));
+  try { push.diffAndNotify(before, payload, req.user.id); } catch (e) { /* push never blocks saving */ }
   res.json({ ok: true });
+});
+
+/* -------------------------------------------------------------
+   Push notifications (v2.12). Each device subscribes itself; each
+   person chooses which events they get. See push.js.
+------------------------------------------------------------- */
+const pushPrefs = (id) => {
+  const r = db.prepare("SELECT push_assigned, push_due, push_alarm, push_request FROM users WHERE id = ?").get(id) || {};
+  return { assigned: !!r.push_assigned, due: !!r.push_due, alarm: !!r.push_alarm, request: !!r.push_request };
+};
+app.get("/api/push/config", requireAuth, (req, res) => {
+  const devices = db.prepare("SELECT endpoint, user_agent, created_at FROM push_subscriptions WHERE user_id = ? ORDER BY created_at").all(req.user.id);
+  res.json({ enabled: push.enabled(), publicKey: push.publicKey(), prefs: pushPrefs(req.user.id), devices: devices.map((d) => ({ endpoint: d.endpoint, userAgent: d.user_agent || "", createdAt: d.created_at })) });
+});
+app.post("/api/push/subscribe", requireAuth, (req, res) => {
+  if (!push.enabled()) return res.status(400).json({ error: "Push notifications are turned off on this server" });
+  const sub = (req.body && req.body.subscription) || {};
+  const ep = String(sub.endpoint || ""), k = sub.keys || {};
+  if (!/^https:\/\//.test(ep) || ep.length > 2000 || typeof k.p256dh !== "string" || typeof k.auth !== "string" || k.p256dh.length > 200 || k.auth.length > 100) {
+    return res.status(400).json({ error: "That subscription is not valid" });
+  }
+  const mine = db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ? AND endpoint != ?").get(req.user.id, ep).n;
+  if (mine >= 10) return res.status(400).json({ error: "You can turn notifications on for up to 10 devices. Turn one off first." });
+  db.prepare(
+    "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at) VALUES (?,?,?,?,?,?) " +
+      "ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent"
+  ).run(req.user.id, ep, k.p256dh, k.auth, String(req.get("user-agent") || "").slice(0, 200), new Date().toISOString());
+  res.json({ ok: true });
+});
+app.post("/api/push/unsubscribe", requireAuth, (req, res) => {
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?").run(String((req.body && req.body.endpoint) || ""), req.user.id);
+  res.json({ ok: true });
+});
+app.put("/api/push/prefs", requireAuth, (req, res) => {
+  const b = req.body || {}; const sets = []; const vals = [];
+  for (const [k, col] of Object.entries(push.EVENTS)) if (b[k] !== undefined) { sets.push(col + " = ?"); vals.push(b[k] ? 1 : 0); }
+  if (sets.length) db.prepare("UPDATE users SET " + sets.join(", ") + " WHERE id = ?").run(...vals, req.user.id);
+  res.json({ ok: true, prefs: pushPrefs(req.user.id) });
+});
+app.post("/api/push/test", requireAuth, async (req, res) => {
+  if (!push.enabled()) return res.status(400).json({ error: "Push notifications are turned off on this server" });
+  const n = db.prepare("SELECT COUNT(*) AS c FROM push_subscriptions WHERE user_id = ?").get(req.user.id).c;
+  if (!n) return res.status(400).json({ error: "Turn notifications on for this device first" });
+  const sent = await push.notify([req.user.id], "assigned", { title: "Test notification", body: "Notifications are working on this device.", tag: "test" });
+  res.json({ ok: true, sent });
 });
 
 /* -------------------------------------------------------------
@@ -769,6 +818,7 @@ app.post("/api/alarms", requireHaAlarmsFeature, (req, res) => {
     resolvedMessage, ["info", "warning", "critical"].includes(severity) ? severity : "warning", "open",
     JSON.stringify({ state: state || null, attributes: attributes || null }), triggeredAt
   );
+  push.notifyAlarm({ id, message: resolvedMessage, severity: ["info", "warning", "critical"].includes(severity) ? severity : "warning" });
   res.json({ ok: true, id });
 });
 
@@ -820,6 +870,7 @@ app.post("/api/alarms/manual", requireAuth, (req, res) => {
     null,
     triggeredAt
   );
+  push.notifyAlarm({ id, message: message.trim(), severity: ["info", "warning", "critical"].includes(severity) ? severity : "warning" });
   res.json(rowToAlarm(db.prepare("SELECT * FROM alarms WHERE id = ?").get(id)));
 });
 
@@ -895,6 +946,7 @@ backup.register(app, { requireAuth, requireOwner, ATTACH_DIR });
 const server = app.listen(PORT, () => {
   console.log(`MaintEnhance server listening on port ${PORT}`);
   startNotificationScheduler(db);
+  push.startSweep();
 });
 
 // v2.10: clean shutdown. On SIGTERM / SIGINT stop taking new connections,
